@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29509.3
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "BertInFSharp", "BertInFSharp.fsproj", "{B742314D-C7F1-48D7-812F-6D9749BD2B4C}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "BertInFSharp", "BertInFSharp.fsproj", "{B742314D-C7F1-48D7-812F-6D9749BD2B4C}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "BERTInFSharpTest", "..\BERTInFSharpTest\BERTInFSharpTest.fsproj", "{3FAF6D53-FEC5-4C24-A1AF-714B5AA80578}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{B742314D-C7F1-48D7-812F-6D9749BD2B4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B742314D-C7F1-48D7-812F-6D9749BD2B4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B742314D-C7F1-48D7-812F-6D9749BD2B4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FAF6D53-FEC5-4C24-A1AF-714B5AA80578}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FAF6D53-FEC5-4C24-A1AF-714B5AA80578}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FAF6D53-FEC5-4C24-A1AF-714B5AA80578}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FAF6D53-FEC5-4C24-A1AF-714B5AA80578}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

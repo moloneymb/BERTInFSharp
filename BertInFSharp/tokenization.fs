@@ -49,81 +49,84 @@ let convert_ids_to_tokens(inv_vocab : InvVocab, items : int[]) = items |> Array.
 /// Runs basic whitespace cleaning and splitting on a piece of text
 let whitespace_tokenize(text : string) = text.Trim().Split([|' '|], StringSplitOptions.RemoveEmptyEntries)
 
+
+/// Checks whether `chars` is a punctuation character.
+let is_punctuation(char : Char) = 
+    let cp = int char
+    // We treat all non-letter/number ASCII as punctuation.
+    // Characters such as "^", "$", and "`" are not in the Unicode
+    // Punctuation class but we treat them as punctuation anyways, for
+    // consistency.
+    if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) ||
+        (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) then
+      true
+    else
+        match Char.GetUnicodeCategory(char) with
+        | UnicodeCategory.ClosePunctuation
+        | UnicodeCategory.ConnectorPunctuation
+        | UnicodeCategory.DashPunctuation
+        | UnicodeCategory.FinalQuotePunctuation
+        | UnicodeCategory.InitialQuotePunctuation
+        | UnicodeCategory.OpenPunctuation
+        | UnicodeCategory.OtherPunctuation -> true
+        | _ -> false
+
+/// Checks whether `char` is a control cahracter.
+let is_control(char : Char) =
+    // These are technically control characters but we count them as whitespace
+    // characters
+    match char with
+    | '\t' | '\n' | '\r' -> false
+    | _ ->
+        match Char.GetUnicodeCategory(char) with
+        | UnicodeCategory.Control
+        | UnicodeCategory.Format -> true
+        | _ -> false
+
+/// Checks whether `chars` is a whitespace character.
+let is_whitespace(char : Char) = 
+    // \t, \n, and \r are technically control characters but we treat them
+    // as whitespace since they are generally considered as such. 
+    match char with 
+    | ' '  | '\t' | '\n' | '\r' -> true
+    | _ -> 
+        match Char.GetUnicodeCategory(char) with
+        | UnicodeCategory.SpaceSeparator -> true
+        | _ -> false
+
+/// Performs invalid character removal and whitespace cleanup on text.
+let clean_text(text : string) = 
+    text.ToCharArray() |> Array.choose (fun char -> 
+        match int char with 
+        | 0 | 0xfffd | _ when is_control(char) -> None 
+        | _ when is_whitespace(char) -> Some(' ')
+        | _ -> Some(char))
+    |> String
+
+/// Checks whether CP is the codepoint of a CJK character.
+let is_chinese_char(cp : int) = 
+    // This defines a "chinese character" as anything in the CJK Unicode block:
+    //   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
+    //
+    // Note that the CJK Unicode block is NOT all Japanese and Korean characters,
+    // despite its name. The modern Korean Hangul alphabet is a different block,
+    // as is Japanese Hiragana and Katakana. Those alphabets are used to write
+    // space-separated words, so they are not treated specially and handled        
+    // like all of the other languages.
+    (cp >= 0x4E00  && cp <= 0x9FFF ) ||
+    (cp >= 0x3400  && cp <= 0x4DBF ) ||
+    (cp >= 0x20000 && cp <= 0x2A6DF) ||
+    (cp >= 0x2A700 && cp <= 0x2B73F) ||
+    (cp >= 0x2B740 && cp <= 0x2B81F) ||
+    (cp >= 0x2B820 && cp <= 0x2CEAF) ||
+    (cp >= 0xF900  && cp <= 0xFAFF ) ||
+    (cp >= 0x2F800 && cp <= 0x2FA1F)
+
+
 // <summary>Runs basic tokenization (punctuation splitting, lower casing, etc.).</summary>
 // <param name="do_lower_case">Whether to lower case the input</param>
-type BasicTokenizer(do_lower_case : bool) =
-
-    /// Checks whether `chars` is a punctuation character.
-    let is_punctuation(char : Char) = 
-        let cp = int char
-        // We treat all non-letter/number ASCII as punctuation.
-        // Characters such as "^", "$", and "`" are not in the Unicode
-        // Punctuation class but we treat them as punctuation anyways, for
-        // consistency.
-        if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) ||
-            (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) then
-          true
-        else
-            match Char.GetUnicodeCategory(char) with
-            | UnicodeCategory.ClosePunctuation
-            | UnicodeCategory.ConnectorPunctuation
-            | UnicodeCategory.DashPunctuation
-            | UnicodeCategory.FinalQuotePunctuation
-            | UnicodeCategory.InitialQuotePunctuation
-            | UnicodeCategory.OpenPunctuation
-            | UnicodeCategory.OtherPunctuation -> true
-            | _ -> false
-
-    /// Checks whether `char` is a control cahracter.
-    let is_control(char : Char) =
-        // These are technically control characters but we count them as whitespace
-        // characters
-        match char with
-        | '\t' | '\n' | '\r' -> false
-        | _ ->
-            match Char.GetUnicodeCategory(char) with
-            | UnicodeCategory.Control
-            | UnicodeCategory.Format -> true
-            | _ -> false
-
-    /// Checks whether `chars` is a whitespace character.
-    let is_whitespace(char : Char) = 
-        // \t, \n, and \r are technically control characters but we treat them
-        // as whitespace since they are generally considered as such. 
-        match char with 
-        | ' '  | '\t' | '\n' | '\r' -> true
-        | _ -> 
-            match Char.GetUnicodeCategory(char) with
-            | UnicodeCategory.SpaceSeparator -> true
-            | _ -> false
-  
-    /// Performs invalid character removal and whitespace cleanup on text.
-    let clean_text(text : string) = 
-        text.ToCharArray() |> Array.choose (fun char -> 
-            match int char with 
-            | 0 | 0xfffd | _ when is_control(char) -> None 
-            | _ when is_whitespace(char) -> Some(' ')
-            | _ -> Some(char))
-        |> String
-
-    /// Checks whether CP is the codepoint of a CJK character.
-    let is_chinese_char(cp : int) = 
-        // This defines a "chinese character" as anything in the CJK Unicode block:
-        //   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
-        //
-        // Note that the CJK Unicode block is NOT all Japanese and Korean characters,
-        // despite its name. The modern Korean Hangul alphabet is a different block,
-        // as is Japanese Hiragana and Katakana. Those alphabets are used to write
-        // space-separated words, so they are not treated specially and handled        
-        // like all of the other languages.
-        (cp >= 0x4E00  && cp <= 0x9FFF ) ||
-        (cp >= 0x3400  && cp <= 0x4DBF ) ||
-        (cp >= 0x20000 && cp <= 0x2A6DF) ||
-        (cp >= 0x2A700 && cp <= 0x2B73F) ||
-        (cp >= 0x2B740 && cp <= 0x2B81F) ||
-        (cp >= 0x2B820 && cp <= 0x2CEAF) ||
-        (cp >= 0xF900  && cp <= 0xFAFF ) ||
-        (cp >= 0x2F800 && cp <= 0x2FA1F)
+type BasicTokenizer(?do_lower_case : bool) =
+    let do_lower_case = defaultArg do_lower_case true
 
     /// Adds whitespace around any CJK character.
     let tokenize_chinese_chars(text : string) = 
@@ -163,7 +166,7 @@ type BasicTokenizer(do_lower_case : bool) =
             |> Array.map (fun x -> 
                 (if do_lower_case then x.ToLowerInvariant() else x) 
                 |> run_strip_accents |> run_split_on_punc)
-            |> Array.collect id 
+            |> Array.collect id
         // NOTE: This seems weird https://github.com/google-research/bert/blob/cc7051dc592802f501e8a6f71f8fb3cf9de95dc9/tokenization.py#L217
         whitespace_tokenize(split_tokens |> String.concat " ") 
 
@@ -232,4 +235,24 @@ type WordpieceTokenizer(vocab : Vocab,
                             [|yield substr; yield! getSubtoken("##" + substr, false)|]
                     yield! getSubtoken(token, true)
         |]
+
+/// Runs end-to-end tokenization
+type FullTokenizer(vocab_file : string, ?do_lower_case : bool) = 
+    let do_lower_case = defaultArg do_lower_case false
+    let vocab = load_vocab(vocab_file)
+    let inv_vocab = dict [ for KeyValue(k,v) in vocab -> (v,k) ]
+    let basic_tokenizer = BasicTokenizer(do_lower_case)
+    let wordpiece_tokenizer = WordpieceTokenizer(vocab = vocab)
+
+    member this.Vocab = vocab
+    member this.InvVocab = inv_vocab
+    member this.BasicTokenizer = basic_tokenizer
+    member this.WordpieceTokenizer = wordpiece_tokenizer
+
+    member this.tokenize(text : string) = 
+        basic_tokenizer.tokenize(text) |> Array.collect wordpiece_tokenizer.tokenize
+
+    member this.convert_tokens_to_ids(tokens) = convert_tokens_to_ids(vocab, tokens)
+    
+    member this.convert_ids_to_tokens(tokens) = convert_ids_to_tokens(inv_vocab, tokens)
 

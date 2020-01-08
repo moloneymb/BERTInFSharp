@@ -700,15 +700,14 @@ type BertModel(config: BertConfig,
         static member get_assignment_map_from_checkpoint(tvars:RefVariable[], init_checkpoint) =
 
             let re = System.Text.RegularExpressions.Regex("^(.*):\\d+$")
-  
             
             let name_to_variable = 
                 [|
                     for var in tvars do
                         let name = var.name
                         let m = re.Match(name)
-                        if m.Groups.Count > 0 then 
-                            yield (m.Groups.[0].Value,var)
+                        if m.Groups.Count > 1 then 
+                            yield (m.Groups.[1].Value,var)
                 |] 
                 //|> Map.ofArray // NOTE the Map to RefVariable is not used     
                 |> Array.map fst |> Set
@@ -1147,8 +1146,7 @@ type BertModel(config: BertConfig,
 
             let (batch_size, from_seq_length, to_seq_length) =
                 match from_shape.Length with
-                | 3 -> //from_shape.[0], from_shape.[1], to_shape.[1]
-                    (-1,-1,-1)
+                | 3 -> from_shape.[0], from_shape.[1], to_shape.[1]
                 | 2 -> 
                     match batch_size, from_seq_length, to_seq_length with
                     | Some(x), Some(y), Some(z) -> (x,y,z)
