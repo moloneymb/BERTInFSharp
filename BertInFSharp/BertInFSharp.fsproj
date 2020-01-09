@@ -17,6 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Argu" Version="6.0.0" />
+    <PackageReference Include="CsvHelper" Version="12.2.3" />
     <PackageReference Include="SciSharp.TensorFlow.Redist" Version="1.14.1" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2" />
     <PackageReference Include="TensorFlow.NET" Version="0.14.0" />
