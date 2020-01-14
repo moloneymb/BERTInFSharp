@@ -23,7 +23,6 @@ module Modeling
 
 open NumSharp
 open System
-open System.Reflection
 open System.Linq
 open Tensorflow
 open Tensorflow.Operations.Activation
@@ -33,11 +32,6 @@ type gen_ops = Tensorflow.Operations.gen_ops
 
 [<AutoOpen>]
 module Auto = 
-    type Tensorflow.variable_scope with
-        member this.name = 
-            let m = typeof<Tensorflow.variable_scope>.GetField("_name", BindingFlags.Instance ||| BindingFlags.NonPublic)
-            m.GetValue(this)  :?> string
-
     //https://github.com/tensorflow/tensorflow/blob/r1.15/tensorflow/python/ops/math_ops.py#L2565-L2754
     type Tensorflow.tensorflow with
         //<summary>Multiplies matrix `a` by matrix `b`, producing `a` * `b`.

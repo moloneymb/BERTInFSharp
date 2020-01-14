@@ -7,6 +7,11 @@ open System.Globalization
 open Tensorflow
 open System.Text.RegularExpressions
 
+// TODO Tokenize needs an interface, e.g.
+//type ITokenizer =
+//    abstract member tokenize : string -> string[]
+//    abstract member convert_tokens_to_ids : string[] -> int[]
+
 /// Checks whether the casing config is consistent with the checkpoint name.
 let validate_case_matches_checkpoint(do_lower_case : bool, init_checkpoint : string) = 
     // The casing has to be passed in by the user and there is no explicit check

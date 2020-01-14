@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="modelling_test.fs" />
     <Compile Include="tokenization_test.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

@@ -4,12 +4,6 @@ module Optimization
 open Tensorflow
 open System
 
-[<AutoOpen>]
-module Auto = 
-    type tensorflow.train_internal with
-        member this.get_or_create_global_step() : RefVariable = 
-            failwith "todo"
-
 let tf = Tensorflow.Binding.tf
 
 /// A basic Adam optimizer that includes "correct" L2 weight decay.

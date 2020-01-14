@@ -1,11 +1,8 @@
 ﻿// Apache 2.0 https://github.com/google-research/bert/blob/master/run_classifier.py
 module RunClassifier
 
-module tf = 
-    module logging =
-        let info(text : string) = failwith "todo"
-
 open Argu
+open System
 
 type Arguments =
     | [<Mandatory>] Data_Dir of path:string
@@ -13,26 +10,26 @@ type Arguments =
     | [<Mandatory>] Task_Name of string
     | [<Mandatory>] Vocab_File of path:string
     | [<Mandatory>] Output_Dir of path:string
-    | Init_Checkpoint of path:string option
-    | Do_Lower_Case of bool option
-    | Max_Seq_Length of int option
-    | Do_Train of bool option
-    | Do_Eval of bool option
-    | Do_Predict of bool option
-    | Train_Batch_Size of int option
-    | Eval_Batch_Size of int option
-    | Predict_Batch_Size of int option
-    | Learning_Rate of float option
-    | Num_Train_Epochs of float option
-    | Warmup_Proportion of float option
-    | Save_Checkpoints_Steps of int option
-    | Iterations_Per_Loop of int option
-    | Use_TPU of bool option
-    | TPU_Name of string option
-    | TPU_Zone of string option
-    | GCP_Project of string option
-    | Master of string option
-    | Num_TPU_Cores of int option
+    | Init_Checkpoint of path:string
+    | Do_Lower_Case of bool
+    | Max_Seq_Length of int
+    | Do_Train of bool
+    | Do_Eval of bool
+    | Do_Predict of bool
+    | Train_Batch_Size of int
+    | Eval_Batch_Size of int
+    | Predict_Batch_Size of int
+    | Learning_Rate of float32
+    | Num_Train_Epochs of float32
+    | Warmup_Proportion of float32
+    | Save_Checkpoints_Steps of int
+    | Iterations_Per_Loop of int
+    | Use_TPU of bool
+    | TPU_Name of string
+    | TPU_Zone of string
+    | GCP_Project of string
+    | Master of string
+    | Num_TPU_Cores of int
     interface Argu.IArgParserTemplate with
         member this.Usage =
             match this with
@@ -73,7 +70,7 @@ type Arguments =
             | Master _ -> "[Optional] TensorFlow master URL."
             | Num_TPU_Cores _ -> "Only used if `use_tpu` is True. Total number of TPU cores to use."
 
-// TODO Defaults for options
+// TODO Defaults 
 // do_lower_case true
 // max_seq_length 128
 // do_train false
@@ -170,22 +167,145 @@ type DataProcessor() =
                     yield getRow()
             |]
 
+type ITokenizer =
+    abstract member tokenize : string -> string[]
+    abstract member convert_tokens_to_ids : string[] -> int[]
+    abstract member printable_text : string -> string
 
-// run_classifier.InputExample
-// run_classifier.convert_examples_to_features
-// run_classifier.convert_single_to_features
-// run_classifier.input_fn_builder
+type IExample = 
+    abstract member guid : Guid
+    abstract member text_a : string
+    abstract member text_b : string option
+    abstract member label : string
 
-let convert_single_example (ex_index, example, label_list, max_seq_length, tokenizer) = failwith "todo"
+/// Truncates a sequence pair in place to the maximum length.
+let truncate_seq_pair(tokens_a : 'a[], tokens_b : 'a[], max_length : int) = 
+  // This is a simple heuristic which will always truncate the longer sequence
+  // one token at a time. This makes more sense than truncating an equal percent
+  // of tokens from each, since if one sequence is very short then each token
+  // that's truncated likely contains more information than a longer sequence.
+    let rec f(length_a,length_b) = 
+        if length_a + length_b <= max_length then
+            tokens_a.[0..length_a-1],
+            tokens_b.[0..length_b-1]
+        else
+            if length_a > length_b then
+                f(length_a-1,length_b)
+            else 
+                f(length_a,length_b-1)
+    f(tokens_a.Length, tokens_b.Length )
+
+
+/// Converts a single `InputExample` into a single `InputFeatures`.
+let convert_single_example (ex_index : int, example : obj, label_list, max_seq_length : int, tokenizer : ITokenizer) = 
+    let example = 
+        match example with
+        | :? PaddingInputExample as x -> 
+            // I am currently confused by this... 
+            // TODO This will likely need refactoring
+            let zeroVector = Array.create max_seq_length 0
+            InputFeatures(input_ids = zeroVector,
+                          input_mask = zeroVector,
+                          segment_ids = zeroVector,
+                          label_id = 0,
+                          is_real_example = false
+                         ) :> obj
+        | _ -> example
+        :?> IExample // TODO obviously fix this
+
+    let label_map = label_list |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
+    let tokens_a = tokenizer.tokenize(example.text_a)
+    let tokens_b = example.text_b |> Option.map tokenizer.tokenize
+
+    let tokens_a, tokens_b = 
+        match tokens_b with
+        | Some(tokens_b) -> 
+            let (x,y) = truncate_seq_pair(tokens_a, tokens_b,max_seq_length)
+            (x,Some(y))
+        | None -> 
+            // Account for [CLS] and [SEP] with "-2"
+            if tokens_a.Length > max_seq_length - 2 then
+                (tokens_a.[0 .. (max_seq_length - 3)],None)
+            else (tokens_a,None)
+
+    // The convention in BERT is:
+    // (a) For sequence pairs:
+    //  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
+    //  type_ids: 0     0  0    0    0     0       0 0     1  1  1  1   1 1
+    // (b) For single sequences:
+    //  tokens:   [CLS] the dog is hairy . [SEP]
+    //  type_ids: 0     0   0   0  0     0 0
+    // 
+    // Where "type_ids" are used to indicate whether this is the first
+    // sequence or the second sequence. The embedding vectors for `type=0` and
+    // `type=1` were learned during pre-training and are added to the wordpiece
+    // embedding vector (and position vector). This is not *strictly* necessary
+    // since the [SEP] token unambiguously separates the sequences, but it makes
+    // it easier for the model to learn the concept of sequences.
+   // 
+    // For classification tasks, the first vector (corresponding to [CLS]) is
+    // used as the "sentence vector". Note that this only makes sense because
+    // the entire model is fine-tuned.
+
+    let tokens,segment_ids = 
+        [|
+            yield ("[CLS]",0)
+            yield! tokens_a |> Array.map (fun x -> (x,0))
+            yield ("[SEP]",0)
+            match tokens_b with
+            | Some(tokens_b) ->
+                yield! tokens_b |> Array.map (fun x -> (x,1))
+                yield ("[SEP]",1)
+            | None -> ()
+        |] |> Array.unzip
+    
+    let input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+    // The mask has 1 fo real tokens and 0 for padding tokens. Only real
+    let input_mask = Array.create input_ids.Length 1
+
+    // Zero-pad up to the sequence length.
+    let padVector  = Array.create (input_ids.Length - max_seq_length) 0
+    let input_ids  = Array.append input_ids padVector
+    let input_mask = Array.append input_mask padVector
+    let segment_ids = Array.append segment_ids padVector
+
+    assert (input_ids.Length = max_seq_length)
+    assert (input_mask.Length = max_seq_length)
+    assert (segment_ids.Length = max_seq_length)
+
+    let label_id = label_map.[example.label]
+    if ex_index < 5 then
+        loggingf "*** Example ***"
+        loggingf "guid: %s" (example.guid.ToString("N"))
+        loggingf "tokens: %s" (tokens |> Array.map tokenizer.printable_text |> String.concat " ")
+        for name,xs in [("input_ids",input_ids);("input_mask",input_mask);("segment_ids",segment_ids)] do
+            loggingf "%s: %s" name (xs |> Array.map string |> String.concat " ")
+        loggingf "label: %s (id = %d)" example.label label_id
+
+    InputFeatures(input_ids = input_ids,
+                  input_mask = input_mask,
+                  segment_ids = segment_ids,
+                  label_id = label_id,
+                  is_real_example = true)
+
 
 // NOTE: This function is not used by this file but is still used by the Colab and
 // people who depend on it.
 /// Convert a set of `InputExample`s to a list of `InputFeatures`.
-let convert_examples_to_features(examples : string[], label_list, max_seq_length : int, tokenizer : string -> string[]) =
-    examples |> Array.iteri (fun ex_index example -> 
+let convert_examples_to_features(examples : string[], label_list, max_seq_length : int, tokenizer : ITokenizer) =
+    examples |> Array.mapi (fun ex_index example -> 
         if ex_index % 10000 = 0 then
-            tf.logging.info(sprintf "Writing example %d of %d" ex_index examples.Length)
+            loggingf "Writing example %d of %d" ex_index examples.Length
         convert_single_example(ex_index, example, label_list,
                                          max_seq_length, tokenizer))
 
+// This function is not used by this file but is still used by the Colab and
+// people who depend on it.
+
+//Tensorflow.Binding.tf.data.Datasets
+
+/// Creates an `input_fn` closure to be passed to TPUEstimator. 
+let input_fn_build(features, seq_length, is_training, drop_remainder) =
+    failwith "todo - a lot of the Dataset library is missing...."
 
