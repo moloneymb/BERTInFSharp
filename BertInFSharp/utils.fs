@@ -11,11 +11,12 @@ type Tensorflow.variable_scope with
         let m = typeof<Tensorflow.variable_scope>.GetField("_name", BindingFlags.Instance ||| BindingFlags.NonPublic)
         m.GetValue(this)  :?> string
 
-let loggingf = printf
+let loggingf = printfn
 
 type Tensorflow.tensorflow.train_internal with
     member this.get_or_create_global_step() : Tensorflow.RefVariable = 
         failwith "todo"
+
 
 // https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/training/checkpoint_utils.py#L203-L291
 

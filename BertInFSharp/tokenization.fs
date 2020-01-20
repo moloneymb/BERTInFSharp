@@ -7,10 +7,10 @@ open System.Globalization
 open Tensorflow
 open System.Text.RegularExpressions
 
-// TODO Tokenize needs an interface, e.g.
-//type ITokenizer =
-//    abstract member tokenize : string -> string[]
-//    abstract member convert_tokens_to_ids : string[] -> int[]
+type ITokenizer =
+    abstract member tokenize : string -> string[]
+    abstract member convert_tokens_to_ids : string[] -> int[]
+    abstract member printable_text : string -> string
 
 /// Checks whether the casing config is consistent with the checkpoint name.
 let validate_case_matches_checkpoint(do_lower_case : bool, init_checkpoint : string) = 
@@ -149,7 +149,7 @@ type BasicTokenizer(?do_lower_case : bool) =
     let run_split_on_punc(text: string) = 
         text.ToCharArray() 
         |> Array.fold (fun s c ->
-            if is_punctuation(c) then [] :: s
+            if is_punctuation(c) then [] :: [c] :: s
             else match s with | [] -> [[c]] | head::tail -> (c::head)::tail) []
         |> List.map (fun x -> String(x |> List.rev |> List.toArray))
         |> List.rev |> List.toArray
@@ -232,18 +232,23 @@ type WordpieceTokenizer(vocab : Vocab,
             for token in whitespace_tokenize(text) do
                 if token.Length > max_input_chars_per_word then yield unk_token
                 else 
-                    let rec getSubtoken(token : string, isStart : bool) =
-                        match findLongestMatch(token,prefixTree) with
-                        | 0 -> [||]
-                        | n -> 
-                            let substr = token.Substring(n) // TODO: In testing look for an off by one error here
-                            [|yield substr; yield! getSubtoken("##" + substr, false)|]
-                    yield! getSubtoken(token, true)
+                    let rec getSubtoken(token : string) =
+                        if token = "##" 
+                        then Some([||]) 
+                        else
+                            match findLongestMatch(token, prefixTree) with
+                            | 0 -> if token.Length = 0 then Some([||]) else None
+                            | n -> 
+                                getSubtoken("##" + token.[n..]) 
+                                |> Option.map (fun xs -> [|yield token.[0..n-1]; yield! xs|])
+                    match getSubtoken(token) with
+                    | None -> yield unk_token
+                    | Some(xs) -> yield! xs
         |]
 
 /// Runs end-to-end tokenization
 type FullTokenizer(vocab_file : string, ?do_lower_case : bool) = 
-    let do_lower_case = defaultArg do_lower_case false
+    let do_lower_case = defaultArg do_lower_case true
     let vocab = load_vocab(vocab_file)
     let inv_vocab = dict [ for KeyValue(k,v) in vocab -> (v,k) ]
     let basic_tokenizer = BasicTokenizer(do_lower_case)
@@ -261,3 +266,9 @@ type FullTokenizer(vocab_file : string, ?do_lower_case : bool) =
     
     member this.convert_ids_to_tokens(tokens) = convert_ids_to_tokens(inv_vocab, tokens)
 
+    interface ITokenizer with
+        member this.tokenize(text) = this.tokenize(text) 
+        member this.convert_tokens_to_ids(tokens) = this.convert_tokens_to_ids(tokens) 
+        /// Returns text encoded in a way suitable for print or logging
+        /// Since all text is encoded utf-16 this just returns an identity
+        member this.printable_text(text) = text

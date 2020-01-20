@@ -36,3 +36,16 @@ Here, we'll train a model to predict whether an IMDB movie review is positive or
 //#load "optimization.fs"
 //#load "tokenization.fs"
 
+//# Download and process the dataset files.
+//def download_and_load_datasets(force_download=False):
+//  dataset = tf.keras.utils.get_file(
+//      fname="aclImdb.tar.gz", 
+//      origin="http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz", 
+//      extract=True)
+//  
+//  train_df = load_dataset(os.path.join(os.path.dirname(dataset), 
+//                                       "aclImdb", "train"))
+//  test_df = load_dataset(os.path.join(os.path.dirname(dataset), 
+//                                      "aclImdb", "test"))
+//  
+//  return train_df, test_df

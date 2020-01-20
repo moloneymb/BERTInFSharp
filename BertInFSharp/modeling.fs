@@ -1,32 +1,19 @@
-﻿/// The main BERT model and related functions.
-module Modeling
-// Apache License, Version 2.0
+﻿// Apache License, Version 2.0
 // Converted to F# from https://github.com/google-research/bert/blob/cc7051dc592802f501e8a6f71f8fb3cf9de95dc9/modeling.py
+/// The main BERT model and related functions.
+module Modeling
 
-
-/// NOTE: mistakes in BERT L350 s/dimension/value
 // TODO tensor alias
 // TODO properly manage GraphKeys
-// TODO proper matmul
-
-// TODO improvements
-// np.sqrt(2.0 / np.pi) needs a 
-// Tensor[] -> TensorShape needed to be able to build a function of dynamic shapes
-
-#if INTERACTIVE
-#I @"C:\Users\moloneymb\.nuget\packages\"
-#r @"numsharp\0.20.4\lib\netstandard2.0\NumSharp.Core.dll"
-#r @"tensorflow.net\0.13.0\lib\netstandard2.0\TensorFlow.NET.dll"
-#r @"system.memory\4.5.3\lib\netstandard2.0\System.Memory.dll"
-#r @"google.protobuf\3.10.1\lib\netstandard2.0\Google.Protobuf.dll"
-#endif
+// TODO Variance in tf.nn.moments is incorrectly capitalized
+// TODO tf.nn.moments has extra Const ops
 
 open NumSharp
 open System
 open System.Linq
 open Tensorflow
 open Tensorflow.Operations.Activation
-
+open Newtonsoft.Json.Linq
 
 type gen_ops = Tensorflow.Operations.gen_ops
 
@@ -131,7 +118,7 @@ module Auto =
             let adjoint_b = defaultArg adjoint_b false
             let a_is_sparse = defaultArg a_is_sparse false
             let b_is_sparse = defaultArg b_is_sparse false
-            let name = defaultArg name String.Empty
+            let name = defaultArg name "MatMul"
             Tensorflow.Binding.tf_with(tf.name_scope(name,"MatMul",[|a;b|]), fun (name:ops.NameScope) -> 
                 if transpose_a && adjoint_a then
                     raise (ValueError("Only one of transpose_a and adjoint_a can be True."))
@@ -183,7 +170,7 @@ module utils =
             then if x = "/" then "" else x.[.. x.Length - 2] 
             else x
 
-        let alias = dropSlash(alias)
+//        let alias = dropSlash(alias)
 ////    TODO - tensors do not have alias yet. We're ignoring this for now
 //          if hasattr(tensor, 'aliases'):
 //            tensor.aliases.append(alias)
@@ -238,24 +225,25 @@ type Layers () =
         let trainable = defaultArg trainable (Nullable<bool>())
         let use_bias = defaultArg use_bias true
         let bias_initializer = defaultArg bias_initializer tf.zeros_initializer
-        Tensorflow.Binding.tf_with(tf.name_scope(name,"dense",[|input|]), fun (ns:Tensorflow.ops.NameScope) ->
-            Tensorflow.Binding.tf_with(tf.variable_scope(name,"dense",reuse=reuse), fun _vs ->
-                match input.shape with
-                | [|_;n|] when n > 0 ->
-                    let kernel = tf.get_variable("kernel",TensorShape(n,units),dtype=dtype,?initializer=kernel_initializer,trainable=trainable)
-                    let x = 
-                        if use_bias 
-                        then
-                            let bias = tf.get_variable("bias",TensorShape(units),dtype=dtype,initializer=bias_initializer,trainable=trainable)
-                            gen_ops.bias_add(gen_ops.mat_mul(input,kernel._AsTensor()),bias._AsTensor())
-                        else
-                            gen_ops.mat_mul(input,kernel._AsTensor())
-                    let x = match activation with None -> x | Some(f) -> f.Activate(x)
-                    tf.identity(x,name=Tensorflow.ops.NameScope.op_Implicit(ns))
-                | _ ->
-                    raise (ValueError(sprintf "Input shape of %A is not suitable for a dense network " input.shape))
-            )
+        //Tensorflow.Binding.tf_with(tf.name_scope("dense","dense",[|input|]), fun (ns:Tensorflow.ops.NameScope) ->
+        Tensorflow.Binding.tf_with(tf.variable_scope(name,"dense",reuse=reuse), fun _vs ->
+            match input.shape with
+            | [|_;n|] when n > 0 ->
+                let kernel = tf.get_variable("kernel",TensorShape(n,units),dtype=dtype,?initializer=kernel_initializer,trainable=trainable)
+                let x = 
+                    if use_bias 
+                    then
+                        let bias = tf.get_variable("bias",TensorShape(units),dtype=dtype,initializer=bias_initializer,trainable=trainable)
+                        gen_ops.bias_add(tf.matmul2(input,kernel._AsTensor()),bias._AsTensor())
+                    else
+                        tf.matmul2(input,kernel._AsTensor())
+                let x = match activation with None -> x | Some(f) -> f.Activate(x)
+                //tf.identity(x,name=Tensorflow.ops.NameScope.op_Implicit(ns))
+                x
+            | _ ->
+                raise (ValueError(sprintf "Input shape of %A is not suitable for a dense network " input.shape))
         )
+        //)
 
     // https://github.com/tensorflow/tensorflow/blob/r2.0/tensorflow/python/ops/nn_impl.py#L1382-L1442
     ///<summary>Batch normalization.
@@ -303,13 +291,12 @@ type Layers () =
                                       ?name : string) =
         let epsilon = defaultArg epsilon 1.0e-6
         let inputs : Tensor[] = [| Some(x); Some(mean); Some(variance); scale; offset|] |> Array.choose id
-        Tensorflow.Binding.tf_with(ops.name_scope(defaultArg name "", "batchnorm",inputs), fun ns ->
+        Tensorflow.Binding.tf_with(ops.name_scope("batchnorm","batchnorm",inputs), fun ns ->
             let inv = math_ops.rsqrt(variance + epsilon)
             let inv2 = match scale with | Some(scale) -> inv * scale | _ -> inv
-            //let rhs = math_ops.cast(inv, x.dtype) + math_ops.cast((match offset with | None -> -mean * inv | Some(offset) -> offset - mean * inv), x.dtype)
-            let rhs1 = mean * inv2
-            let rhs = offset.Value - rhs1
-            x * rhs)
+            x * math_ops.cast(inv2,x.dtype) + 
+                math_ops.cast((match offset with | Some(offset) ->(offset - mean * inv2) | None ->  -mean * inv2), x.dtype)
+            )
 
     // https://github.com/tensorflow/tensorflow/blob/r1.15/tensorflow/contrib/layers/python/layers/layers.py#L2204
     /// <summary>
@@ -370,9 +357,11 @@ type Layers () =
                              ?trainable : bool,
                              ?begin_norm_axis : int,
                              ?begin_params_axis : int,
-                             ?scope : string) = 
+                             ?scope : string,
+                             ?name : string) = 
 
         //let scope = defaultArg scope "LayerNorm"
+        let name = defaultArg name String.Empty
         let center = defaultArg center true
         let scale = defaultArg scale true
         let trainable = defaultArg trainable true
@@ -380,8 +369,9 @@ type Layers () =
         let begin_params_axis = defaultArg begin_params_axis 1
         let variables_collections = defaultArg variables_collections (Map(["beta",[||];"gamma",[||]]))
         
+        //Tensorflow.Binding.tf_with(tf.name_scope("LayerNorm"), fun _ ->
         Tensorflow.Binding.tf_with(
-            tf.variable_scope("LayerNorm", // TODO this is a hack
+            tf.variable_scope(name, 
                               "LayerNorm", 
                               values = [|inputs|],
                               reuse = (reuse |> Option.toNullable)), fun (vs:variable_scope) ->
@@ -389,7 +379,7 @@ type Layers () =
             //let inputs = ops.convert_to_tensor(inputs)
             // NOTE: TensorShape GetSlice is not defined which is needed for slicing
             let inputs_shape = inputs.TensorShape.dims
-            let inputs_rank = inputs_shape.Length - 1
+            let inputs_rank = inputs_shape.Length 
             if inputs_rank = 0 then
                 raise (ValueError(sprintf "Inputs %s has undefined rank." inputs.name))
             let dtype = inputs.dtype.as_base_dtype()
@@ -436,7 +426,7 @@ type Layers () =
                     
                 else None
             // By default, compute the moments across all the dimensions except the one with index 0.
-            let norm_axes = [|begin_norm_axis .. inputs_rank-1|]
+            let norm_axes = [|begin_norm_axis .. inputs_rank - 1|] // todo, perhaps fix this??
             let (mean, variance) = tf.nn.moments(inputs, norm_axes, keep_dims = true).ToTuple()
             // Compute layer normalization using the batch_normalization function.
             // Note that epsilon must be increased for float16 due to the limited
@@ -453,6 +443,7 @@ type Layers () =
             let outputs = match activation_fn with | None -> outputs | Some(f) -> f.Activate(outputs)
             utils.collect_named_outputs(defaultArg output_collections Array.empty<string>, vs.name, outputs)
             )
+            //)
 
 
 type Utils() =
@@ -465,6 +456,7 @@ type Utils() =
         if dropout_prob = 0.0f
         then input_tensor
         else tf.nn.dropout(input_tensor, tf.constant(1.0f - dropout_prob))
+
     /// Run layer normalization on the last dimension of the tensor."""
     static member layer_norm(input_tensor) =
       Layers.layer_norm(inputs=input_tensor, begin_norm_axis = -1, begin_params_axis = -1)
@@ -489,10 +481,11 @@ let gelu(x: Tensor) =
     x * cdf
 
 module Activation = 
-    let Gelu = {new Operations.Activation.IActivation with member this.Activate(x,_) = gelu(x)}
+    let Gelu = {new Operations.Activation.IActivation with member this.Activate(x,name) = tf.identity(gelu(x),name)}
     let Relu  = Operations.Activation.relu()
     let Tanh  = Operations.Activation.tanh()
     let Linear = Operations.Activation.linear()
+
 
 
 /// Configuration for `BertModel`.
@@ -544,13 +537,55 @@ type BertConfig = {
          }
 
     /// Constructs a `BertConfig` from a Python dictionary of parameters.
-    static member from_dict(json_object : string) = failwith "todo"
-    /// Constructs a `BertConfig` from a json file of parameters.
-    static member from_file(json_file : string) = failwith "todo"
-    /// Serializes this instance to a Python dictionary.
-    static member to_dict() = failwith "todo" 
+    static member from_json_string(json_object : string) = 
+        let bertObj = JObject.Parse(json_object)
+        let getInt32 name = bertObj.[name].ToString() |> Int32.Parse
+        let getFloat32 name = bertObj.[name].ToString() |> Single.Parse
+        let getActivation(name : string) = 
+            match bertObj.[name].ToString().ToLower() with
+            | "gelu" -> Activation.Gelu
+            | "relu" -> Activation.Relu :> IActivation
+            | "tanh" -> Activation.Tanh :> IActivation
+            | "linear" -> Activation.Linear :> IActivation
+            | _ -> failwithf "Activation %s is not supported" name
+
+        {
+            vocab_size = getInt32 "vocab_size" |> Some
+            hidden_size = getInt32 "hidden_size"
+            num_hidden_layers = getInt32 "num_hidden_layers"
+            num_attention_heads = getInt32 "num_attention_heads"
+            intermediate_size = getInt32 "intermediate_size"
+            hidden_act= getActivation "hidden_act"
+            hidden_dropout_prob = getFloat32 "hidden_dropout_prob"
+            attention_probs_dropout_prob = getFloat32 "attention_probs_dropout_prob"
+            max_position_embeddings = getInt32 "max_position_embeddings"
+            type_vocab_size = getInt32 "type_vocab_size"
+            initializer_range = getFloat32 "initializer_range"
+        } : BertConfig
+
     /// Serializes this instance to a JSON string.
-    static member to_json_string() = failwith "todo"
+    member this.to_json_string() : string = 
+        let hidden_act = 
+            if this.hidden_act = Activation.Gelu then "gelu"
+            elif this.hidden_act = upcast Activation.Relu then "relu"
+            elif this.hidden_act = upcast Activation.Tanh then "tanh"
+            elif this.hidden_act = upcast Activation.Linear then "linear"
+            else failwithf "activation is unrecognized"
+
+        [|
+            JProperty("vocab_size",this.vocab_size)
+            JProperty("hidden_size",this.hidden_size)
+            JProperty("num_hidden_layers", this.num_hidden_layers)
+            JProperty("num_attention_heads", this.num_attention_heads)
+            JProperty("intermediate_size", this.intermediate_size)
+            JProperty("hidden_act", hidden_act)
+            JProperty("hidden_dropout_prob", this.hidden_dropout_prob)
+            JProperty("attention_probs_dropout_prob", this.attention_probs_dropout_prob)
+            JProperty("max_position_embeddings",this.max_position_embeddings)
+            JProperty("type_vocab_size", this.type_vocab_size)
+            JProperty("initializer_range", this.initializer_range)
+        |] 
+        |> JObject |> string
 
 /// <summary>
 /// BERT model ("Bidirectional Encoder Representations from Transformers").
@@ -603,10 +638,12 @@ type BertModel(config: BertConfig,
     let vocab_size = defaultArg config.vocab_size -1 // TODO figure out if this should be an error
 
     let (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output) =
+    //Tensorflow.Binding.tf_with(tf.name_scope(scope, default_name = "bert"), fun _ -> 
         Tensorflow.Binding.tf_with(
             tf.variable_scope(scope, default_name="bert"),
             fun _ ->
             let (embedding_output, embedding_table) = 
+                //Tensorflow.Binding.tf_with(tf.name_scope("embeddings"), fun _ -> 
                 Tensorflow.Binding.tf_with(tf.variable_scope("embeddings"), fun _ ->
                     let (embedding_output, embedding_table) =
                         BertModel.embedding_lookup(
@@ -630,12 +667,13 @@ type BertModel(config: BertConfig,
                             max_position_embeddings=config.max_position_embeddings,
                             dropout_prob=config.hidden_dropout_prob)
 
-                    (embedding_output, embedding_table))
+                    (embedding_output, embedding_table)) //)
 
             //This converts a 2D mask of shape [batch_size, seq_length] to a 3D
             // mask of shape [batch_size, seq_length, seq_length] which is used
             // for the attention scores.
             let all_encoder_layers =
+                //Tensorflow.Binding.tf_with(tf.name_scope("encoder"), fun _ -> 
                 Tensorflow.Binding.tf_with(tf.variable_scope("encoder"), fun _ ->
                     let attention_mask = BertModel.create_attention_mask_from_input_mask(input_ids, input_mask)
                     // Run the stacked transformer.
@@ -650,7 +688,7 @@ type BertModel(config: BertConfig,
                                                 hidden_dropout_prob=config.hidden_dropout_prob,
                                                 attention_probs_dropout_prob=config.attention_probs_dropout_prob,
                                                 initializer_range=config.initializer_range,
-                                                do_return_all_layers=true))
+                                                do_return_all_layers=true))//)
 
             let sequence_output = all_encoder_layers |> Seq.last
             // The "pooler" converts the encoded sequence tensor of shape
@@ -661,17 +699,19 @@ type BertModel(config: BertConfig,
             // We "pool" the model by simply taking the hidden state corresponding
             // to the first token. We assume that this has been pre-trained
             let pooled_output = 
+                //Tensorflow.Binding.tf_with(tf.name_scope("pooler"), fun _ -> 
                 Tensorflow.Binding.tf_with(tf.variable_scope("pooler"), fun _ -> 
                     let first_token_tensor = tf.squeeze(sequence_output.[Slice.All, Slice(Nullable(0),Nullable(1)), Slice.All], axis=[|1|])
                     Layers.dense(first_token_tensor,
                                     config.hidden_size,
                                     activation=tanh(),
-                                    kernel_initializer=Utils.create_initializer(config.initializer_range)))
-            (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output))
+                                    kernel_initializer=Utils.create_initializer(config.initializer_range)))//)
+            (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output))//)
 
     
 
     with 
+
         member this.PooledOutput = pooled_output
 
         /// <summary>Gets final hidden layer of encoder</summary>
@@ -822,56 +862,64 @@ type BertModel(config: BertConfig,
             let mutable prev_output = BertModel.reshape_to_matrix(input_tensor)
 
             let makeLayer(layer_idx : int) = 
-                Tensorflow.Binding.tf_with(tf.variable_scope(sprintf "layer_%d" layer_idx), fun _ -> 
-                    let layer_input = prev_output
-                    let attention_output = 
-                        Tensorflow.Binding.tf_with(tf.variable_scope("attention"), fun _ ->
-                            // TODO/WARN The python code does not seem to be able to return
-                            // more than one attention head here so either I'm wrong about that
-                            // or a fair amount of the original code here is moot
-                            let attention_output = 
-                                Tensorflow.Binding.tf_with(tf.variable_scope("self"), fun _ ->
-                                    BertModel.attention_layer(from_tensor=layer_input,
-                                                              to_tensor=layer_input,
-                                                              ?attention_mask=attention_mask,
-                                                              num_attention_heads=num_attention_heads,
-                                                              size_per_head=attention_head_size,
-                                                              attention_probs_dropout_prob=attention_probs_dropout_prob,
-                                                              initializer_range=initializer_range,
-                                                              do_return_2d_tensor=true,
-                                                              batch_size=batch_size,
-                                                              from_seq_length=seq_length,
-                                                              to_seq_length=seq_length))
-                            // Run a linear projection of `hidden_size` then add a residual
-                            // with `layer_input`. 
-                            let attention_output = 
-                                Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ ->
-                                    let attention_output = Layers.dense(attention_output, 
-                                                                           hidden_size,
-                                                                           kernel_initializer=Utils.create_initializer(initializer_range))
-                                    let attention_output = Utils.dropout(attention_output, hidden_dropout_prob)
-                                    let attention_output = Utils.layer_norm(attention_output + layer_input)
-                                    attention_output)
-                            attention_output)
+                let name = sprintf "layer_%d" layer_idx
+                //Tensorflow.Binding.tf_with(tf.name_scope(name), fun _ -> 
+                Tensorflow.Binding.tf_with(tf.variable_scope(name), fun _ -> 
+                        let layer_input = prev_output
+                        let attention_output = 
+                            //Tensorflow.Binding.tf_with(tf.name_scope("attention"), fun _ ->
+                                Tensorflow.Binding.tf_with(tf.variable_scope("attention"), fun _ ->
+                                    // TODO/WARN The python code does not seem to be able to return
+                                    // more than one attention head here so either I'm wrong about that
+                                    // or a fair amount of the original code here is moot
+                                    let attention_output = 
+                                        //Tensorflow.Binding.tf_with(tf.name_scope("self"), fun _ -> 
+                                            Tensorflow.Binding.tf_with(tf.variable_scope("self"), fun _ ->
+                                                BertModel.attention_layer(from_tensor=layer_input,
+                                                                          to_tensor=layer_input,
+                                                                          ?attention_mask=attention_mask,
+                                                                          num_attention_heads=num_attention_heads,
+                                                                          size_per_head=attention_head_size,
+                                                                          attention_probs_dropout_prob=attention_probs_dropout_prob,
+                                                                          initializer_range=initializer_range,
+                                                                          do_return_2d_tensor=true,
+                                                                          batch_size=batch_size,
+                                                                          from_seq_length=seq_length,
+                                                                          to_seq_length=seq_length))//)
+                                    // Run a linear projection of `hidden_size` then add a residual
+                                    // with `layer_input`. 
+                                    let attention_output = 
+                                        //Tensorflow.Binding.tf_with(tf.name_scope("output"), fun _ -> 
+                                            Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ ->
+                                                let attention_output = Layers.dense(attention_output, 
+                                                                                       hidden_size,
+                                                                                       kernel_initializer=Utils.create_initializer(initializer_range))
+                                                let attention_output = Utils.dropout(attention_output, hidden_dropout_prob)
+                                                let attention_output = Utils.layer_norm(attention_output + layer_input)
+                                                attention_output)//)
+                                    attention_output)//)
 
-                    let intermediate_output = 
-                            Tensorflow.Binding.tf_with(tf.variable_scope("intermediate"), fun _ ->
-                                Layers.dense(attention_output, 
-                                                intermediate_size,
-                                                activation=intermediate_act_fn,
-                                                kernel_initializer=Utils.create_initializer(initializer_range)))
+                        let intermediate_output = 
+                            //Tensorflow.Binding.tf_with(tf.name_scope("intermediate"), fun _ ->
+                                Tensorflow.Binding.tf_with(tf.variable_scope("intermediate"), fun _ ->
+                                    Layers.dense(attention_output, 
+                                                    intermediate_size,
+                                                    activation=intermediate_act_fn,
+                                                    kernel_initializer=Utils.create_initializer(initializer_range)))//)
 
-                    let layer_output = 
-                        // Down-project back to `hidden_size` then add the residual.
-                        Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ -> 
-                            let layer_output = Layers.dense(intermediate_output, 
-                                                               hidden_size,
-                                                               kernel_initializer=Utils.create_initializer(initializer_range))
-                            Utils.dropout(layer_output, hidden_dropout_prob)
-                        )
-                    prev_output <- layer_output
-                    layer_output
-                )
+                        let layer_output = 
+                            // Down-project back to `hidden_size` then add the residual.
+                            //Tensorflow.Binding.tf_with(tf.name_scope("output"), fun _ -> 
+                                Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ -> 
+                                    let layer_output = Layers.dense(intermediate_output, 
+                                                                       hidden_size,
+                                                                       kernel_initializer=Utils.create_initializer(initializer_range))
+                                    let layer_output = Utils.dropout(layer_output, hidden_dropout_prob)
+                                    let layer_output = Utils.layer_norm(layer_output + attention_output)
+                                    layer_output
+                                    )//)
+                        prev_output <- layer_output
+                        layer_output)//)
 
             let all_layer_outputs = [| for layer_idx in 0..num_hidden_layers - 1 -> makeLayer(layer_idx) |]
 
@@ -1051,7 +1099,7 @@ type BertModel(config: BertConfig,
                     // the batch size.
                     let position_broadcast_shape = 
                          [| 
-                            for _i in 0..num_dims - 3 do // todo double check "- 2"
+                            for _i in 0..num_dims - 3 do 
                                 yield 1
                             yield seq_length
                             yield width

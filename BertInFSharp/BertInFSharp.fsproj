@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="BERT_testing.fsx" />
     <Content Include="weights_list.txt" />
     <None Include="sample_text.txt" />
     <Compile Include="utils.fs" />
@@ -21,6 +22,7 @@
   <ItemGroup>
     <PackageReference Include="Argu" Version="6.0.0" />
     <PackageReference Include="CsvHelper" Version="12.2.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
     <PackageReference Include="SciSharp.TensorFlow.Redist" Version="1.14.1" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2" />
     <PackageReference Include="TensorFlow.NET" Version="0.14.0" />

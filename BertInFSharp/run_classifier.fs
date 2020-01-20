@@ -3,6 +3,7 @@ module RunClassifier
 
 open Argu
 open System
+open Tokenization
 
 type Arguments =
     | [<Mandatory>] Data_Dir of path:string
@@ -87,6 +88,12 @@ type Arguments =
 // use_tpu false
 // num_tpu_cores 8
 
+type IExample = 
+    abstract member guid : Guid option
+    abstract member text_a : string
+    abstract member text_b : string option
+    abstract member label : string
+
 // <summary>A single training/test example for simple sequence classification </summary>
 // <param name="guid">Unique id for the example.</param>
 // <param name="text_a"> string. The untokenized text of the first sequence. For single
@@ -95,12 +102,12 @@ type Arguments =
 //  Only must be specified for sequence pair tasks.</param>
 // <param name="label"> (Optional) string. The label of the example. This should be
 // specified for train and dev examples, but not for test examples </param>
-type InputExample(guid : System.Guid, text_a : string, ?text_b : string, ?label : string) = 
-    member this.guid   = guid
-    member this.text_a = text_a
-    member this.text_b = text_b
-    member this.label  = label
-
+type InputExample(?guid : System.Guid, ?text_a : string, ?text_b : string, ?label : string) = 
+    interface IExample with
+        member this.guid = guid 
+        member this.text_a = defaultArg text_a String.Empty
+        member this.text_b = text_b
+        member this.label = defaultArg label String.Empty
 
 // Fake example so the num input examples is a multiple of the batch size.
 //  When running eval/predict on the TPU, we need to pad the number of examples
@@ -114,10 +121,10 @@ type PaddingInputExample() =
     end
 
 /// A single set of features of data.
-type InputFeatures(input_ids,
-                   input_mask,
-                   segment_ids,
-                   label_id,
+type InputFeatures(input_ids : int[],
+                   input_mask : int[],
+                   segment_ids : int[],
+                   label_id : int,
                    ?is_real_example) =
     member this.input_ids = input_ids
     member this.input_mask = input_mask
@@ -167,16 +174,6 @@ type DataProcessor() =
                     yield getRow()
             |]
 
-type ITokenizer =
-    abstract member tokenize : string -> string[]
-    abstract member convert_tokens_to_ids : string[] -> int[]
-    abstract member printable_text : string -> string
-
-type IExample = 
-    abstract member guid : Guid
-    abstract member text_a : string
-    abstract member text_b : string option
-    abstract member label : string
 
 /// Truncates a sequence pair in place to the maximum length.
 let truncate_seq_pair(tokens_a : 'a[], tokens_b : 'a[], max_length : int) = 
@@ -195,23 +192,23 @@ let truncate_seq_pair(tokens_a : 'a[], tokens_b : 'a[], max_length : int) =
                 f(length_a,length_b-1)
     f(tokens_a.Length, tokens_b.Length )
 
-
-/// Converts a single `InputExample` into a single `InputFeatures`.
-let convert_single_example (ex_index : int, example : obj, label_list, max_seq_length : int, tokenizer : ITokenizer) = 
-    let example = 
-        match example with
-        | :? PaddingInputExample as x -> 
-            // I am currently confused by this... 
-            // TODO This will likely need refactoring
+let padding_input_example_to_iexample(example : PaddingInputExample, max_seq_length : int) = 
             let zeroVector = Array.create max_seq_length 0
             InputFeatures(input_ids = zeroVector,
                           input_mask = zeroVector,
                           segment_ids = zeroVector,
                           label_id = 0,
-                          is_real_example = false
-                         ) :> obj
-        | _ -> example
-        :?> IExample // TODO obviously fix this
+                          is_real_example = false)  
+
+/// Converts a single `InputExample` into a single `InputFeatures`.
+let convert_single_example (ex_index : int, example : IExample, label_list, max_seq_length : int, tokenizer : ITokenizer) = 
+    //let example = 
+//        match example with
+//        | :? PaddingInputExample as x -> 
+//            // I am currently confused by this... 
+//            // TODO This will likely need refactoring
+//        | _ -> example
+  //      :?> IExample // TODO obviously fix this
 
     let label_map = label_list |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
     let tokens_a = tokenizer.tokenize(example.text_a)
@@ -265,7 +262,7 @@ let convert_single_example (ex_index : int, example : obj, label_list, max_seq_l
     let input_mask = Array.create input_ids.Length 1
 
     // Zero-pad up to the sequence length.
-    let padVector  = Array.create (input_ids.Length - max_seq_length) 0
+    let padVector  = Array.create (max_seq_length - input_ids.Length) 0
     let input_ids  = Array.append input_ids padVector
     let input_mask = Array.append input_mask padVector
     let segment_ids = Array.append segment_ids padVector
@@ -277,7 +274,7 @@ let convert_single_example (ex_index : int, example : obj, label_list, max_seq_l
     let label_id = label_map.[example.label]
     if ex_index < 5 then
         loggingf "*** Example ***"
-        loggingf "guid: %s" (example.guid.ToString("N"))
+        example.guid |> Option.iter (fun guid -> loggingf "guid: %s" (guid.ToString("N")))
         loggingf "tokens: %s" (tokens |> Array.map tokenizer.printable_text |> String.concat " ")
         for name,xs in [("input_ids",input_ids);("input_mask",input_mask);("segment_ids",segment_ids)] do
             loggingf "%s: %s" name (xs |> Array.map string |> String.concat " ")
@@ -293,7 +290,7 @@ let convert_single_example (ex_index : int, example : obj, label_list, max_seq_l
 // NOTE: This function is not used by this file but is still used by the Colab and
 // people who depend on it.
 /// Convert a set of `InputExample`s to a list of `InputFeatures`.
-let convert_examples_to_features(examples : string[], label_list, max_seq_length : int, tokenizer : ITokenizer) =
+let convert_examples_to_features(examples : IExample[], label_list, max_seq_length : int, tokenizer : ITokenizer) =
     examples |> Array.mapi (fun ex_index example -> 
         if ex_index % 10000 = 0 then
             loggingf "Writing example %d of %d" ex_index examples.Length
