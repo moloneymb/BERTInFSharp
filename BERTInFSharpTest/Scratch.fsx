@@ -9,7 +9,7 @@
 
 #load @"..\BertInFSharp\utils.fs"
 #load @"..\BertInFSharp\tokenization.fs"
-#load @"..\BertInFSharp\modeling.fs"
+//#load @"..\BertInFSharp\modeling.fs"
 
 open Tokenization
 open System

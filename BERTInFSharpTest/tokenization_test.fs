@@ -1,7 +1,5 @@
 module Tokenization.Tests
 
-// TODO double check unicode handeling in .Net with regards to the python equivalent of u"word"
-
 open System
 open System.IO
 open NUnit.Framework
@@ -9,7 +7,6 @@ open NUnit.Framework
 let shouldEqual (msg: string) (v1: 'T) (v2: 'T) = 
     if v1 <> v2 then 
         Assert.Fail(sprintf "fail %s: expected %A, got %A" msg v1 v2)
-
 
 [<Test>]
 let ``test full tokenizer``() =
@@ -27,7 +24,6 @@ let ``test chinese``() =
     let tokenizer = Tokenization.BasicTokenizer()
     (tokenizer.tokenize("ah\u535A\u63A8zz")) 
     |> shouldEqual "A"  [|"ah"; "\u535A"; "\u63A8"; "zz"|]
-
 
 [<Test>]
 let ``test basic tokenizer lower``() =

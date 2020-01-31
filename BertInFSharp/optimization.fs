@@ -5,6 +5,7 @@ open Tensorflow
 open System
 
 let tf = Tensorflow.Binding.tf
+type gen_ops = Tensorflow.Operations.gen_ops
 
 /// A basic Adam optimizer that includes "correct" L2 weight decay.
 type AdamWeightDecayOptimizer(learning_rate : Tensor, 
@@ -40,7 +41,8 @@ type AdamWeightDecayOptimizer(learning_rate : Tensor,
     member this.ExcludeFromWeightDecay = exclude_from_weight_decay
 
     // TODO This should be an override, for some reason this is not wokring
-    member this.apply_gradients(grads_and_vars : (Tensor*RefVariable)[], ?global_step : RefVariable, ?name : string) : Operation = 
+    //member this.apply_gradients(grads_and_vars : (Tensor*RefVariable)[], ?global_step : RefVariable, ?name : string) : Operation = 
+    member this.apply_gradients2(grads_and_vars : (Tensor*Tensor)[], ?global_step : Tensor, ?name : string) : Operation = 
         [|
             for (grad, param) in grads_and_vars do
                 // if grad is None or param is None:
@@ -48,13 +50,13 @@ type AdamWeightDecayOptimizer(learning_rate : Tensor,
                 let param_name = get_variable_name(param.name)
 
                 let m = tf.get_variable(name=param_name + "/adam_m",
-                                        shape=TensorShape(param.shape.as_list()),
+                                        shape=TensorShape(param.shape),
                                         dtype=tf.float32,
                                         trainable=Nullable(false),
                                         initializer=tf.zeros_initializer)
 
                 let v = tf.get_variable(name=param_name + "/adam_v",
-                                        shape=TensorShape(param.shape.as_list()),
+                                        shape=TensorShape(param.shape),
                                         dtype=tf.float32,
                                         trainable=Nullable(false),
                                         initializer=tf.zeros_initializer)
@@ -72,39 +74,37 @@ type AdamWeightDecayOptimizer(learning_rate : Tensor,
                 // Instead we want ot decay the weights in a manner that doesn't interact
                 // with the m/v parameters. This is equivalent to adding the square
                 // of the weights to the loss with plain (non-momentum) SGD.
-                let update = if do_use_weight_decay(param_name) then update + (param._AsTensor()) * weight_decay_rate  else update
+                let update = if do_use_weight_decay(param_name) then update + param * weight_decay_rate  else update
                 
                 let update_with_lr = learning_rate * update
 
                 let next_param = param - update_with_lr
 
-                yield param.assign(next_param)
-                yield m.assign(next_m)
-                yield v.assign(next_v)
+                yield gen_ops.assign(param,next_param)
+                yield tf.assign(m,next_m)
+                yield tf.assign(v,next_v)
         |] 
         // TODO fix optional name when C# optional interop is fixed
         |> fun assignments -> tf.group(assignments,name = (defaultArg name "fix_me"))
 
 
-// Creates an optimizer training op.
-let create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu : bool) = 
-    let global_step = tf.train.get_or_create_global_step()
-
-    // TODO consider polynomial_decay
-    //let learning_rate = tf.constant(value = init_lr, shape=TensorShape(), dtype = tf.float32)
+/// Creates an optimizer training op.
+let create_optimizer(loss : Tensor, init_lr : float32, num_train_steps : int, num_warmup_steps : int option) = 
+    let global_step = tf.get_or_create_global_step()
+    //let learning_rate = tf.constant(value = init_lr, shape=[||], dtype = tf.float32)
     let learning_rate = init_lr
 
     // Implements linear decay of the learning rate
     let learning_rate = 
         tf.train.polynomial_decay(learning_rate, 
                                   global_step, 
-                                  num_train_steps,
+                                  float32 num_train_steps,
                                   end_learning_rate = 0.0f,
                                   power = 1.0f,
                                   cycle = false)
 
-     // Implements linear warmup. I.e., if global_step < num_warmup_steps, the
-     // learning rate will be `global_step/num_warmup_steps * init_lr`.
+    // Implements linear warmup. I.e., if global_step < num_warmup_steps, the
+    // learning rate will be `global_step/num_warmup_steps * init_lr`.
     let learning_rate = 
          match num_warmup_steps with
          | None -> learning_rate
@@ -126,27 +126,25 @@ let create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu :
     // is how the model was trained (note that the Adam m/v variables are NOT
     // loaded from init_checkpoint.)
 
-    let optimizer = AdamWeightDecayOptimizer(learning_rate=learning_rate,
-                                             weight_decay_rate=0.01f,
-                                             beta_1=0.9f,
-                                             beta_2=0.999f,
-                                             epsilon=1e-6f,
-                                             exclude_from_weight_decay=[|"LayerNorm"; "layer_norm"; "bias"|])
-//  
-//    let optimizer = if use_tpu then tf.contrib.tpu.CrossShardOptimizer(optimizer) else optimizer
-//    let tvars = tf.trainable_variables()
-//    let grads = tf.gradients(loss, tvars |> Array.map (fun x -> x._AsTensor())
-//
-//    // This is how the model was pre-trained.
-//    let (grads, _) = tf.clip_by_global_norm(grads, clip_norm = 1.0f)
-//
-//    let train_op = optimizer.apply_gradients((grads, tvars) ||> Array.zip, global_step = global_step)
-//
-//    // Normally the global step update is done inside of `apply_gradients`.
-//    // However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
-//    // a different optimizer, you should probably take this line out.
-//    let new_global_step = global_step + 1
-//    train_op = tf.group(train_op, [global_step.assign(new_global_step)])
-//    train_op
-    failwith "todo"
+    let optimizer = 
+        AdamWeightDecayOptimizer(learning_rate=learning_rate,
+                                              weight_decay_rate=0.01f,
+                                              beta_1=0.9f,
+                                              beta_2=0.999f,
+                                              epsilon=1e-6f,
+                                              exclude_from_weight_decay=[|"LayerNorm"; "layer_norm"; "bias"|])
+
+    let tvars = tf.trainable_variables() |> Array.map (fun x -> x._variable)
+    let grads = tf.gradients(loss, tvars)
+    // This is how the model was pre-trained.
+
+    let (grads, _) = tf.clip_by_global_norm(grads, clip_norm = tf.constant(1.0f))
+    let train_op = optimizer.apply_gradients2((grads, tvars) ||> Array.zip, global_step = global_step._AsTensor())
+
+    // Normally the global step update is done inside of `apply_gradients`.
+    // However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
+    // a different optimizer, you should probably take this line out.
+    let new_global_step = global_step + 1
+    let train_op = tf.group([|train_op :> ITensorOrOperation; tf.assign(global_step,new_global_step) :> ITensorOrOperation|])
+    train_op
 

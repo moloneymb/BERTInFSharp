@@ -201,7 +201,7 @@ let padding_input_example_to_iexample(example : PaddingInputExample, max_seq_len
                           is_real_example = false)  
 
 /// Converts a single `InputExample` into a single `InputFeatures`.
-let convert_single_example (ex_index : int, example : IExample, label_list, max_seq_length : int, tokenizer : ITokenizer) = 
+let convert_single_example (ex_index : int, example : IExample, label_map : Map<string,int>, max_seq_length : int, tokenizer : ITokenizer) = 
     //let example = 
 //        match example with
 //        | :? PaddingInputExample as x -> 
@@ -210,7 +210,6 @@ let convert_single_example (ex_index : int, example : IExample, label_list, max_
 //        | _ -> example
   //      :?> IExample // TODO obviously fix this
 
-    let label_map = label_list |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
     let tokens_a = tokenizer.tokenize(example.text_a)
     let tokens_b = example.text_b |> Option.map tokenizer.tokenize
 
@@ -290,11 +289,11 @@ let convert_single_example (ex_index : int, example : IExample, label_list, max_
 // NOTE: This function is not used by this file but is still used by the Colab and
 // people who depend on it.
 /// Convert a set of `InputExample`s to a list of `InputFeatures`.
-let convert_examples_to_features(examples : IExample[], label_list, max_seq_length : int, tokenizer : ITokenizer) =
-    examples |> Array.mapi (fun ex_index example -> 
+let convert_examples_to_features(examples : IExample[], label_map, max_seq_length : int, tokenizer : ITokenizer) =
+    examples |> Async.mapiChunkBySize 200 (fun ex_index example -> 
         if ex_index % 10000 = 0 then
             loggingf "Writing example %d of %d" ex_index examples.Length
-        convert_single_example(ex_index, example, label_list,
+        convert_single_example(ex_index, example, label_map,
                                          max_seq_length, tokenizer))
 
 // This function is not used by this file but is still used by the Colab and

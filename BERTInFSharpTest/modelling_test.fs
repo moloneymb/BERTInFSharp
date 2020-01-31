@@ -1,8 +1,6 @@
 ﻿namespace BERTInFSharpTest
 
-open System
 open System.Text.RegularExpressions
-open System.IO
 open Microsoft.VisualStudio.TestTools.UnitTesting
 open Tensorflow
 

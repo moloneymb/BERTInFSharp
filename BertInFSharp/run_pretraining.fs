@@ -121,11 +121,11 @@ let get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
         let input_tensor = 
             Binding.tf_with(tf.variable_scope("transform"), fun _ -> 
                 let input_tensor = 
-                    Modeling.Layers.dense(input_tensor,
+                    Layers.dense(input_tensor,
                                     units=bert_config.hidden_size,
                                     activation = bert_config.hidden_act,
                                     kernel_initializer = create_initializer(bert_config.initializer_range))
-                let input_tensor = Modeling.Layers.layer_norm(input_tensor)
+                let input_tensor = Layers.layer_norm(input_tensor)
                 input_tensor)
         // The output weights are the same as the input embeddings, but there is
         // an output-only bias for each token.
@@ -134,7 +134,7 @@ let get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
                                           initializer = tf.zeros_initializer)
         let logits = tf.matmul2(input_tensor, output_weights, transpose_b = true)
         let logits = tf.nn.bias_add(logits, output_bias)
-        /// TODO the original tf.nn.log_softmax is more efficient
+        //Tensorflow.Operations.gen_nn_ops.log_softmax() // missing an axis
         let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))
 
         let label_ids = tf.reshape(label_ids,[|-1|])
@@ -177,64 +177,65 @@ let get_next_sentence_output(bert_config, input_tensor, labels) =
     let loss = tf.reduce_mean(per_example_loss)
     (loss, per_example_loss, log_probs)
 
-/// Returns `model_fn` closure for TPUEstimator.
-let model_fn_builder(bert_config : BertConfig, init_checkpoint : string, learning_rate,
-                     num_train_steps, num_warmup_steps, use_tpu,
-                     use_one_hot_embeddings) = 
-    /// The `model_fn` for TPUEstimator.
-    let model_fn(features : Map<string,Tensor>, labels, mode : ModeKeys, params') = 
-        loggingf "*** Features ***"
-        for KeyValue(name,value) in features do
-            loggingf "  name = %s, shape = %A"  name value.shape
-        let input_ids = features.["input_ids"]
-        let input_mask = features.["input_mask"]
-        let segment_ids = features.["segment_ids"]
-        let masked_lm_positions = features.["masked_lm_positions"]
-        let masked_lm_ids = features.["masked_lm_ids"]
-        let masked_lm_weights = features.["masked_lm_weights"]
-        let next_sentence_labels = features.["next_sentence_labels"]
-        let is_training = mode = ModeKeys.Train
-        let model : BertModel = Modeling.BertModel(config = bert_config,
-                                      is_training = is_training,
-                                      input_ids = input_ids,
-                                      input_mask = input_mask,
-                                      token_type_ids = segment_ids,
-                                      use_one_hot_embeddings = use_one_hot_embeddings)
-
-        let (masked_lm_loss, maked_lm_example_loss, masked_lm_log_probs) = 
-            get_masked_lm_output(bert_config, model.SequenceOutput, model.EmbeddingTable,
-                                 masked_lm_positions, masked_lm_ids, masked_lm_weights)
-        let (next_sentence_loss, next_sentence_example_loss, next_sentence_log_probs) = 
-            get_next_sentence_output(bert_config, model.PooledOutput, next_sentence_labels)
-
-        let total_loss = masked_lm_loss + next_sentence_loss
-
-        let tvars = tf.trainable_variables() |> Array.map (fun x -> x :?> RefVariable)
-
-        let scaffold_fn, initialized_variable_names = 
-            if not(String.IsNullOrWhiteSpace(init_checkpoint)) then
-              let (assignment_map, initialized_variable_names) = 
-                  Modeling.BertModel.get_assignment_map_from_checkpoint(tvars, init_checkpoint)
-              if use_tpu then
-                let tpu_scaffold() =
-                    tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
-                    // TODO tf.train.Scaffold()
-                    failwith "todo"
-                Some(tpu_scaffold), initialized_variable_names
-              else 
-                tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
-                None, initialized_variable_names
-            else None, Map.empty
-
-        loggingf "**** Trainable Variables ****"
-
-        for var in tvars do
-            let init_string = 
-                if initialized_variable_names.ContainsKey(var.name) 
-                then ", *INIT_FROM_CKPT*" 
-                else ""
-            loggingf "  name = %s, shape = %O%s" var.name var.shape init_string
-
+//
+///// Returns `model_fn` closure for TPUEstimator.
+//let model_fn_builder(bert_config : BertConfig, init_checkpoint : string, learning_rate,
+//                     num_train_steps, num_warmup_steps, use_tpu,
+//                     use_one_hot_embeddings) = 
+//    /// The `model_fn` for TPUEstimator.
+//    let model_fn(features : Map<string,Tensor>, labels, mode : ModeKeys, params') = 
+//        loggingf "*** Features ***"
+//        for KeyValue(name,value) in features do
+//            loggingf "  name = %s, shape = %A"  name value.shape
+//        let input_ids = features.["input_ids"]
+//        let input_mask = features.["input_mask"]
+//        let segment_ids = features.["segment_ids"]
+//        let masked_lm_positions = features.["masked_lm_positions"]
+//        let masked_lm_ids = features.["masked_lm_ids"]
+//        let masked_lm_weights = features.["masked_lm_weights"]
+//        let next_sentence_labels = features.["next_sentence_labels"]
+//        let is_training = mode = ModeKeys.Train
+//        let model : BertModel = Modeling.BertModel(config = bert_config,
+//                                      is_training = is_training,
+//                                      input_ids = input_ids,
+//                                      input_mask = input_mask,
+//                                      token_type_ids = segment_ids,
+//                                      use_one_hot_embeddings = use_one_hot_embeddings)
+//
+//        let (masked_lm_loss, maked_lm_example_loss, masked_lm_log_probs) = 
+//            get_masked_lm_output(bert_config, model.SequenceOutput, model.EmbeddingTable,
+//                                 masked_lm_positions, masked_lm_ids, masked_lm_weights)
+//        let (next_sentence_loss, next_sentence_example_loss, next_sentence_log_probs) = 
+//            get_next_sentence_output(bert_config, model.PooledOutput, next_sentence_labels)
+//
+//        let total_loss = masked_lm_loss + next_sentence_loss
+//
+//        let tvars = tf.trainable_variables() |> Array.map (fun x -> x :?> RefVariable)
+//
+//        let scaffold_fn, initialized_variable_names = 
+//            if not(String.IsNullOrWhiteSpace(init_checkpoint)) then
+//              let (assignment_map, initialized_variable_names) = 
+//                  Modeling.BertModel.get_assignment_map_from_checkpoint(tvars, init_checkpoint)
+//              if use_tpu then
+//                let tpu_scaffold() =
+//                    tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+//                    // TODO tf.train.Scaffold()
+//                    failwith "todo"
+//                Some(tpu_scaffold), initialized_variable_names
+//              else 
+//                tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+//                None, initialized_variable_names
+//            else None, Map.empty
+//
+//        loggingf "**** Trainable Variables ****"
+//
+//        for var in tvars do
+//            let init_string = 
+//                if initialized_variable_names.ContainsKey(var.name) 
+//                then ", *INIT_FROM_CKPT*" 
+//                else ""
+//            loggingf "  name = %s, shape = %O%s" var.name var.shape init_string
+//
 ////    output_spec = None
 //    if mode = ModeKeys.Train
 //    then

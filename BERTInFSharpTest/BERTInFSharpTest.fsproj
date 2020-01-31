@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
@@ -8,13 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="predicting_movie_reviews_with_bert.fsx" />
     <None Include="Scratch.fsx" />
+    <Compile Include="pretrained_test.fs" />
+    <Compile Include="optimization_test.fs" />
     <Compile Include="modelling_test.fs" />
     <Compile Include="tokenization_test.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-
-  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
