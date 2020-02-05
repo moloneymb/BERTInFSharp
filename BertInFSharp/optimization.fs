@@ -18,6 +18,7 @@ type AdamWeightDecayOptimizer(learning_rate: Tensor,
         ?name: string) =
 
     inherit Optimizer(learning_rate, false, name = defaultArg name "AdamWeightDecayOptimizer")
+
     let beta_1 = defaultArg beta_1 0.9f
     let beta_2 = defaultArg beta_2 0.999f
     let epsilon = defaultArg epsilon 1e-6f
@@ -92,18 +93,20 @@ type AdamWeightDecayOptimizer(learning_rate: Tensor,
 
 /// Creates an optimizer training op.
 let create_optimizer(loss: Tensor, init_lr: float32, num_train_steps: int, num_warmup_steps: int option) = 
+
     let global_step = tf.get_or_create_global_step()
+
     //let learning_rate = tf.constant(value = init_lr, shape=[||], dtype = tf.float32)
     let learning_rate = init_lr
 
     // Implements linear decay of the learning rate
     let learning_rate = 
         tf.train.polynomial_decay(learning_rate, 
-                                  global_step, 
-                                  float32 num_train_steps,
-                                  end_learning_rate = 0.0f,
-                                  power = 1.0f,
-                                  cycle = false)
+            global_step, 
+            float32 num_train_steps,
+            end_learning_rate = 0.0f,
+            power = 1.0f,
+            cycle = false)
 
     // Implements linear warmup. I.e., if global_step < num_warmup_steps, the
     // learning rate will be `global_step/num_warmup_steps * init_lr`.
@@ -148,6 +151,8 @@ let create_optimizer(loss: Tensor, init_lr: float32, num_train_steps: int, num_w
     // However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
     // a different optimizer, you should probably take this line out.
     let new_global_step = global_step + 1
-    let train_op = tf.group [|train_op :> ITensorOrOperation; tf.assign(global_step,new_global_step) :> ITensorOrOperation|]
+    let train_op =
+        tf.group [| train_op :> ITensorOrOperation;
+                    tf.assign(global_step,new_global_step) :> ITensorOrOperation |]
     train_op
 

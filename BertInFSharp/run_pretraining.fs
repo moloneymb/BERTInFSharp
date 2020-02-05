@@ -4,7 +4,6 @@ module RunPretraining
 
 open Argu
 open System
-open System.IO
 open Modeling
 open Optimization
 open Tensorflow
@@ -112,12 +111,14 @@ let gather_indexes(sequence_tensor, positions) =
 let create_initializer(x:float32) : IInitializer = failwith "todo"
     
 /// Get loss and log probs for the masked LM.
-let get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
-                         label_ids, label_weights) = 
+let get_masked_lm_output(bert_config, input_tensor, output_weights, positions, label_ids, label_weights) = 
+
     let input_tensor = gather_indexes(input_tensor, positions)
+
     Binding.tf_with(tf.variable_scope("cls/predictions"), fun _ -> 
-    // We apply one more non-linear transformation before the output layer.
-    // This matrix is not used after pre-training.
+
+        // We apply one more non-linear transformation before the output layer.
+        // This matrix is not used after pre-training.
         let input_tensor = 
             Binding.tf_with(tf.variable_scope("transform"), fun _ -> 
                 let input_tensor = 
@@ -155,6 +156,7 @@ let get_masked_lm_output(bert_config, input_tensor, output_weights, positions,
 
 /// Get loss and log probs for the next sentence prediction."""
 let get_next_sentence_output(bert_config, input_tensor, labels) = 
+
     // Simple binary classification. Note that 0 is "next sentence" and 1 is
     // "random sentence". This weight matrix is not used after pre-training.
     let output_weights, output_bias = 
@@ -168,6 +170,7 @@ let get_next_sentence_output(bert_config, input_tensor, labels) =
                                 shape= TensorShape([|2|]), 
                                 initializer=tf.zeros_initializer)
             (output_weights, output_bias))
+
     let logits = tf.matmul2(input_tensor, output_weights._AsTensor(), transpose_b = true)
     let logits = tf.nn.bias_add(logits, output_bias)
     let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))

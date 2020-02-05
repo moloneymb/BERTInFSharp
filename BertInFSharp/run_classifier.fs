@@ -154,26 +154,29 @@ type DataProcessor() =
 
     /// Reads a tab separated value file.
     static member private read_tsv(input_file: string, ?quotechar: char)  =
+
         let reader = new System.IO.StreamReader(input_file)
         let config = CsvHelper.Configuration.Configuration(Delimiter = "\t", Quote = (defaultArg quotechar '"'))
         use csv = new CsvHelper.CsvReader(reader, config)
-        if not (csv.Read()) then [||]
-        else 
-            // NOTE this is a hack because csv.Context.ColumnCount always returned 0 in testing
-            // and there seemed to be no other way to get the column count
-            let rec getColumns(col: int) = 
-                try 
-                    csv.[col] |> ignore
-                    getColumns(col+1)
-                with
-                | :? CsvHelper.MissingFieldException -> col
-            let colCount = getColumns(0)
-            let getRow() = [|for i in 0 .. colCount - 1 -> csv.[i]|]
-            [|
+        [| 
+            if csv.Read() then
+                // NOTE this is a hack because csv.Context.ColumnCount always returned 0 in testing
+                // and there seemed to be no other way to get the column count
+                let rec getColumns(col: int) = 
+                    try 
+                        csv.[col] |> ignore
+                        getColumns(col+1)
+                    with
+                    | :? CsvHelper.MissingFieldException -> col
+
+                let colCount = getColumns 0
+
+                let getRow() = [|for i in 0 .. colCount - 1 -> csv.[i]|]
+
                 yield getRow()
                 while csv.Read() do
                     yield getRow()
-            |]
+        |]
 
 
 /// Truncates a sequence pair in place to the maximum length.
