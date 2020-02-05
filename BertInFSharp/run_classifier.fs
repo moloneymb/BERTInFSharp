@@ -31,6 +31,7 @@ type Arguments =
     | GCP_Project of string
     | Master of string
     | Num_TPU_Cores of int
+
     interface Argu.IArgParserTemplate with
         member this.Usage =
             match this with
@@ -104,10 +105,10 @@ type IExample =
 // specified for train and dev examples, but not for test examples </param>
 type InputExample(?guid : System.Guid, ?text_a : string, ?text_b : string, ?label : string) = 
     interface IExample with
-        member this.guid = guid 
-        member this.text_a = defaultArg text_a String.Empty
-        member this.text_b = text_b
-        member this.label = defaultArg label String.Empty
+        member _.guid = guid 
+        member _.text_a = defaultArg text_a String.Empty
+        member _.text_b = text_b
+        member _.label = defaultArg label String.Empty
 
 // Fake example so the num input examples is a multiple of the batch size.
 //  When running eval/predict on the TPU, we need to pad the number of examples
@@ -126,30 +127,30 @@ type InputFeatures(input_ids : int[],
                    segment_ids : int[],
                    label_id : int,
                    ?is_real_example) =
-    member this.input_ids = input_ids
-    member this.input_mask = input_mask
-    member this.segment_ids = segment_ids
-    member this.label_id = label_id
-    member this.is_real_example = defaultArg is_real_example false
+    member _.input_ids = input_ids
+    member _.input_mask = input_mask
+    member _.segment_ids = segment_ids
+    member _.label_id = label_id
+    member _.is_real_example = defaultArg is_real_example false
 
 /// NOTE: Should I get rid of the default methods
 /// Base class for data converters for sequence classification data sets.
 type DataProcessor() = 
     abstract member get_train_examples : string -> string
     /// Gets a collection of `InputExample`s for the train set.
-    default this.get_train_examples(data_dir) = raise (System.NotImplementedException())
+    default _.get_train_examples(data_dir) = raise (System.NotImplementedException())
 
     abstract member get_dev_examples : string -> string
     /// Gets a collection of `InputExample`s for the dev set.
-    default this.get_dev_examples(data_dir) = raise (System.NotImplementedException())
+    default _.get_dev_examples(data_dir) = raise (System.NotImplementedException())
 
     abstract member get_test_examples : string -> string
     /// Gets a collection of `InputExample`s for prediction.
-    default this.get_test_examples (data_dir) = raise (System.NotImplementedException())
+    default _.get_test_examples (data_dir) = raise (System.NotImplementedException())
 
     abstract member get_labels : unit -> string []
     /// Gets the list of labels for this data set."""
-    default this.get_labels () = raise (System.NotImplementedException())
+    default _.get_labels () = raise (System.NotImplementedException())
 
     /// Reads a tab separated value file.
     static member private read_tsv(input_file : string, ?quotechar : char)  =
