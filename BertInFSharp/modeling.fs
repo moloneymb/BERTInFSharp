@@ -173,9 +173,10 @@ type BertModel(config: BertConfig,
     let scope = defaultArg scope "bert"
     let use_one_hot_embeddings = defaultArg use_one_hot_embeddings false
     let config = 
-        if not is_training 
-        then {config with hidden_dropout_prob = 0.0f; attention_probs_dropout_prob = 0.0f}
-        else config
+        if not is_training then
+            {config with hidden_dropout_prob = 0.0f; attention_probs_dropout_prob = 0.0f}
+        else
+            config
 
     let input_shape: int[] = BertModel.get_shape_list(input_ids, expected_rank=2)
     let batch_size = input_shape.[0]
@@ -862,7 +863,7 @@ type BertModel(config: BertConfig,
         let name = defaultArg name tensor.name
         let expected_rank_dict = set expected_rank 
         let actual_rank = tensor.TensorShape.ndim
-        if not(expected_rank.Contains(actual_rank)) then
+        if not (expected_rank.Contains(actual_rank)) then
             let scope_name = tf.get_variable_scope().name
             raise (ValueError(sprintf "For the tensor.`%s` in scope `%s`, the actual rank `%d` (shape = %O) is not equal to the expected rank `%A`"
                 name scope_name actual_rank tensor.TensorShape expected_rank))

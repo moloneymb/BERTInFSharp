@@ -51,8 +51,8 @@ let ``test pretrained BERT run``() =
     let expected = [|-0.791169226f; -0.372503042f; -0.784386933f; 0.597510815f |]
     let res = sess.run(bertModel.PooledOutput,[|FeedItem(input_ids,t1); FeedItem(input_mask,t2)|])
                   .Data<float32>().ToArray().[0..3]
-    if (expected,res) ||> Array.zip |> Array.exists (fun (x,y) -> System.Math.Abs(x-y) > 1e-2f ) 
-    then Assert.Fail(sprintf "fail test adam: expected %A, got %A" expected res)
+    if (expected,res) ||> Array.zip |> Array.exists (fun (x,y) -> System.Math.Abs(x-y) > 1e-2f ) then
+        Assert.Fail(sprintf "fail test adam: expected %A, got %A" expected res)
 
 
 [<Test>]

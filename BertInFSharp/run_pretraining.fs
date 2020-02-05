@@ -213,7 +213,7 @@ let get_next_sentence_output(bert_config, input_tensor, labels) =
 //        let tvars = tf.trainable_variables() |> Array.map (fun x -> x :?> RefVariable)
 //
 //        let scaffold_fn, initialized_variable_names = 
-//            if not(String.IsNullOrWhiteSpace(init_checkpoint)) then
+//            if not (String.IsNullOrWhiteSpace(init_checkpoint)) then
 //              let (assignment_map, initialized_variable_names) = 
 //                  Modeling.BertModel.get_assignment_map_from_checkpoint(tvars, init_checkpoint)
 //              if use_tpu then

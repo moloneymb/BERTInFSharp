@@ -31,7 +31,7 @@ let ``test adam``() =
     let w_np = sess.run(w)
     let res = w_np.[0].Data<float32>().ToArray()
     let expected = [|0.4f; 0.2f; -0.5f|]
-    if (res, expected) ||> Array.zip |> Array.exists (fun (x,y) -> Math.Abs(x-y) > 1e-2f ) 
-    then Assert.Fail(sprintf "fail test adam: expected %A, got %A" expected res)
+    if (res, expected) ||> Array.zip |> Array.exists (fun (x,y) -> Math.Abs(x-y) > 1e-2f ) then 
+        Assert.Fail(sprintf "fail test adam: expected %A, got %A" expected res)
 
 

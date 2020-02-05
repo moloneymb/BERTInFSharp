@@ -157,7 +157,7 @@ type DataProcessor() =
         let reader = new System.IO.StreamReader(input_file)
         let config = CsvHelper.Configuration.Configuration(Delimiter = "\t", Quote = (defaultArg quotechar '"'))
         use csv = new CsvHelper.CsvReader(reader, config)
-        if not(csv.Read()) then [||]
+        if not (csv.Read()) then [||]
         else 
             // NOTE this is a hack because csv.Context.ColumnCount always returned 0 in testing
             // and there seemed to be no other way to get the column count

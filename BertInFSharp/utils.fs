@@ -32,8 +32,8 @@ do
             Tensorflow.Binding.tf_with(ops.control_dependencies([|grad|]), fun _ -> 
                 2.0 *  grad * (x - y))
         if x.TensorShape.is_fully_defined() && y.TensorShape.is_fully_defined() then
-            if x.shape = y.shape 
-            then [|x_grad; -x_grad|]
+            if x.shape = y.shape then 
+                [|x_grad; -x_grad|]
             else
                 match x.shape,y.shape with
                 | [|_;1|],_ -> [|array_ops.reshape(math_ops.reduce_sum(x_grad,1),x.shape);-x_grad|]
@@ -300,7 +300,7 @@ module Auto =
                     let b, adjoint_b = if transpose_b then conj(b), true else b,adjoint_b
                     Tensorflow.gen_math_ops.batch_mat_mul(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name._name)
                 else
-                    if a.shape.Length = 2 && b.shape.Length = 2 && not(transpose_a) && not(transpose_b) then tf.matmul(a,b)
+                    if a.shape.Length = 2 && b.shape.Length = 2 && not (transpose_a) && not (transpose_b) then tf.matmul(a,b)
                     else failwith "todo"
                 )
 
@@ -436,8 +436,8 @@ module utils =
       ///<returns> The tensor with a new alias appended to its list of aliases.</returns>
     let append_tensor_alias(tensor: Tensor, alias: string) = 
         let dropSlash(x:string) = 
-            if x.[x.Length-1] = '/' 
-            then if x = "/" then "" else x.[.. x.Length - 2] 
+            if x.[x.Length-1] = '/' then
+                if x = "/" then "" else x.[.. x.Length - 2] 
             else x
 
 //        let alias = dropSlash(alias)
@@ -500,8 +500,7 @@ type Layers () =
             | [|_;n|] when n > 0 ->
                 let kernel = tf.get_variable("kernel",TensorShape(n,units),dtype=dtype,?initializer=kernel_initializer,trainable=trainable)
                 let x = 
-                    if use_bias 
-                    then
+                    if use_bias then
                         let bias = tf.get_variable("bias",TensorShape(units),dtype=dtype,initializer=bias_initializer,trainable=trainable)
                         gen_ops.bias_add(tf.matmul2(input,kernel._AsTensor()),bias._AsTensor())
                     else
@@ -669,7 +668,7 @@ type Layers () =
                 inputs_shape.[(if begin_params_axis < 0 then begin_params_axis + inputs_shape.Length else begin_params_axis) .. ] 
                 |> TensorShape
                 
-            if not(params_shape.is_fully_defined()) then
+            if not (params_shape.is_fully_defined()) then
                 raise (ValueError(sprintf "Inputs %s: shape(inputs)[%i:] is not fully defined: %i"
                                     inputs.name begin_params_axis inputs_rank))
 
@@ -728,9 +727,10 @@ type Utils() =
     /// (NOT of *keeping* a value as in `tf.nn.dropout`).</param>
     /// <returns>A version of `input_tensor` with dropout applied</returns>
     static member dropout(input_tensor, dropout_prob: float32) =
-        if dropout_prob = 0.0f
-        then input_tensor
-        else tf.nn.dropout(input_tensor, tf.constant(1.0f - dropout_prob))
+        if dropout_prob = 0.0f then
+            input_tensor
+        else 
+            tf.nn.dropout(input_tensor, tf.constant(1.0f - dropout_prob))
 
     /// Run layer normalization on the last dimension of the tensor."""
     static member layer_norm(input_tensor) =
