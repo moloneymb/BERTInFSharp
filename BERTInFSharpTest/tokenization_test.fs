@@ -1,4 +1,4 @@
-module Tokenization.Tests
+module TokenizationTests
 
 open System
 open System.IO

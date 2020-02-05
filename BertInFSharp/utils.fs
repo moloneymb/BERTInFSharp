@@ -59,6 +59,7 @@ do
         [|array_ops.pad(grad, paddings); null; null|]
     ))
 
+    // fixes another bug
     ops.RegisterGradientFunction("GatherV2", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
         /// Converts an IndexedSlices to a Tensor without sparse->dense warnings.
         let indexedSlicesToTensorNoWarning(indexed_slices : Tensorflow.Framework.IndexedSlices) = 
@@ -108,7 +109,6 @@ let loggingf = printfn
 type Tensorflow.tensorflow.train_internal with
     member this.get_or_create_global_step() : Tensorflow.RefVariable = 
         failwith "todo"
-
 
 // https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/training/checkpoint_utils.py#L203-L291
 

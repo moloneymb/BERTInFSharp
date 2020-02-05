@@ -1,28 +1,27 @@
 ﻿/// Tests BERT inferences with known values
-module Pretrained.Test
+module PretrainedTests
 
-open System.Text.RegularExpressions
-open Tensorflow
-open System.IO
-open NUnit.Framework
 open Modeling
-open Tensorflow
-open RunClassifier
+open NUnit.Framework
 open NumSharp
-open Common
-open ICSharpCode.SharpZipLib.GZip
-open ICSharpCode.SharpZipLib.Tar
+open RunClassifier
+open System
+open System.IO
+open Tensorflow
 
 [<Test>]
-let ``test pretrained BERT``() =
+let ``test pretrained BERT run``() =
     // TODO generalize location
+    Common.setup()
     let tf = Tensorflow.Binding.tf
+    tf.reset_default_graph()
+
     let do_lower_case = true
-    let tokenizer =   Tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)
-    let bert_config = BertConfig.from_json_string(File.ReadAllText(bert_config_file))
+    let tokenizer =   Tokenization.FullTokenizer(vocab_file=Common.vocab_file, do_lower_case=do_lower_case)
+    let bert_config = BertConfig.from_json_string(File.ReadAllText(Common.bert_config_file))
     let BATCH_SIZE = 2
     let MAX_SEQ_LENGTH = 128
-    let vocab_map = File.ReadAllLines(vocab_file) |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
+    let vocab_map = File.ReadAllLines(Common.vocab_file) |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
     let movie_reviews = 
         [|
             "a stirring , funny and finally transporting re imagining of beauty and the beast and 1930s horror films",1
@@ -40,7 +39,7 @@ let ``test pretrained BERT``() =
     let input_mask = tf.placeholder(tf.int32,TensorShape([|BATCH_SIZE; MAX_SEQ_LENGTH|]))
 
     let bertModel = BertModel(bert_config, false, input_ids = input_ids, input_mask = input_mask)
-    let restore = tf.restore(Path.Combine(chkpt,"bert_model.ckpt"))
+    let restore = tf.restore(Common.bert_chkpt)
 
     use sess = tf.Session()
     sess.run(restore)
@@ -56,27 +55,15 @@ let ``test pretrained BERT``() =
     then Assert.Fail(sprintf "fail test adam: expected %A, got %A" expected res)
 
 
-open Tokenization
-open System
-open System.IO
-open Newtonsoft.Json.Linq
-open Modeling
-open Tensorflow.Operations.Activation
-open Modeling.Activation
-open NumSharp
-open Tensorflow
-open System.Collections.Generic
-open RunClassifier
-open Common
-
 [<Test>]
 let ``test pretrained BERT train``() =
-
+    Common.setup()
     let tf = Tensorflow.Binding.tf
+    tf.reset_default_graph()
 
     let do_lower_case = true
-    let tokenizer =   Tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)
-    let bert_config = BertConfig.from_json_string(File.ReadAllText(bert_config_file))
+    let tokenizer =   Tokenization.FullTokenizer(vocab_file=Common.vocab_file, do_lower_case=do_lower_case)
+    let bert_config = BertConfig.from_json_string(File.ReadAllText(Common.bert_config_file))
     // Compute train and warmup steps from batch size
     // These hyperparameters are copied from this colab notebook (https://colab.sandbox.google.com/github/tensorflow/tpu/blob/master/tools/colab/bert_finetuning_with_cloud_tpus.ipynb)
 
@@ -92,25 +79,12 @@ let ``test pretrained BERT train``() =
     let SAVE_CHECKPOINTS_STEPS = 500
     let SAVE_SUMMARY_STEPS = 100
 
-    let vocab = File.ReadAllLines(vocab_file)
-
-
-    let dataset = @"C:\EE\aclImdb\"
-
-    let download_and_extract() =
-        let wc = new Net.WebClient()
-        wc.DownloadFile(@"http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz", @"C:\EE\aclImdb_v1.tar.gz")
-        let extractTGZ(gzArchiveName : string, destFolder : string) =
-            use inStream = File.OpenRead(gzArchiveName)
-            use gzipStream = new GZipInputStream(inStream)
-            use tarArchive = TarArchive.CreateInputTarArchive(gzipStream)
-            tarArchive.ExtractContents(destFolder)
-        extractTGZ(@"C:\EE\aclImdb_v1.tar.gz", dataset)
+    let vocab = File.ReadAllLines(Common.vocab_file)
 
     let getTrainTest limit = 
         let vocab_map = vocab |> Array.mapi (fun i x -> (x,i)) |> Map.ofArray
         let f x y v = 
-            Directory.GetFiles(Path.Combine(dataset, "aclImdb",x,y)) 
+            Directory.GetFiles(Path.Combine(Common.data, "aclImdb",x,y)) 
             |> Array.truncate limit
             |> Async.mapiChunkBySize 200 (fun _ x -> InputExample(text_a = File.ReadAllText(x), label = string v) :> IExample)
         let g x = 
@@ -128,14 +102,13 @@ let ``test pretrained BERT train``() =
     let bertModel = BertModel(bert_config, false, input_ids = input_ids, input_mask = input_mask)
 
     // create the restore op before the other ops
-    let restore = tf.restore(Path.Combine(chkpt,"bert_model.ckpt"))
+    let restore = tf.restore(Common.bert_chkpt)
 
     // Use "pooled_output" for classification tasks on an entire sentence.
     // Use "sequence_outputs" for token-level output.
     let output_layer = bertModel.PooledOutput
 
     let hidden_size = output_layer.shape |> Seq.last
-
 
     let output_weights = tf.get_variable("output_weights", 
                                          TensorShape([|hidden_size; NUM_LABELS|]), 
@@ -167,7 +140,6 @@ let ``test pretrained BERT train``() =
     let num_train_steps = int(float32 train.Length / float32 BATCH_SIZE * NUM_TRAIN_EPOCHS)
     let num_warmup_steps = int(float32 num_train_steps * WARMUP_PROPORTION)
 
-
     let train_op = Optimization.create_optimizer(loss, LEARNING_RATE, num_train_steps, Some(num_warmup_steps))
 
     let sess = tf.Session()
@@ -177,7 +149,7 @@ let ``test pretrained BERT train``() =
 
     System.Diagnostics.Debug.WriteLine(sprintf "Training with batch size %i" BATCH_SIZE)
 
-    for i in 0..10 do
+    for i in 0..3 do
         let subsample = train |> Array.subSample BATCH_SIZE 
         let t1 = NDArray(subsample |> Array.map (fun x -> x.input_ids))
         let t2 = NDArray(subsample |> Array.map (fun x -> x.input_mask))

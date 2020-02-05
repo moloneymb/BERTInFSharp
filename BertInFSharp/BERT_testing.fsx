@@ -22,6 +22,9 @@
 
 #time "on"
 
+//let wc = System.Net.WebClient()
+//wc.DownloadData()
+
 open Tokenization
 open System
 open System.IO
@@ -36,6 +39,17 @@ open RunClassifier
 open Common
 
 let tf = Tensorflow.Binding.tf
+
+#r "System.IO.Compression"
+open System.IO.Compression
+let za = new ZipArchive(new MemoryStream())
+
+do
+    use x = za.Entries.[0].Open()
+    use f = File.OpenWrite("")
+    x.CopyTo(f)
+    za.Entries.[0].
+za.Entries.[0].FullName
 
 let do_lower_case = true
 let tokenizer =   Tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=do_lower_case)

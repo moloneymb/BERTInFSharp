@@ -1,4 +1,4 @@
-﻿module Optimization.Tests
+﻿module OptimizationTests
 
 open System
 open Tensorflow

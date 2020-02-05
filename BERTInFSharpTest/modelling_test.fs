@@ -1,4 +1,4 @@
-﻿namespace BERTInFSharpTest
+﻿namespace ModellingTests
 
 open System.Text.RegularExpressions
 open Microsoft.VisualStudio.TestTools.UnitTesting
