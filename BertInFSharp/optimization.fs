@@ -3,46 +3,48 @@
 module Optimization
 open Tensorflow
 open System
+open System.Text.RegularExpressions
 
 let tf = Tensorflow.Binding.tf
 type gen_ops = Tensorflow.Operations.gen_ops
 
 /// A basic Adam optimizer that includes "correct" L2 weight decay.
-type AdamWeightDecayOptimizer(learning_rate : Tensor, 
-                              ?weight_decay_rate : float32,
-                              ?beta_1 : float32,
-                              ?beta_2 : float32,
-                              ?epsilon : float32,
-                              ?exclude_from_weight_decay : string[],
-                              ?name : string) =
+type AdamWeightDecayOptimizer(learning_rate: Tensor, 
+        ?weight_decay_rate: float32,
+        ?beta_1: float32,
+        ?beta_2: float32,
+        ?epsilon: float32,
+        ?exclude_from_weight_decay: string[],
+        ?name: string) =
+
     inherit Optimizer(learning_rate, false, name = defaultArg name "AdamWeightDecayOptimizer")
     let beta_1 = defaultArg beta_1 0.9f
     let beta_2 = defaultArg beta_2 0.999f
     let epsilon = defaultArg epsilon 1e-6f
     let weight_decay_rate = defaultArg weight_decay_rate 0.0f
     let exclude_from_weight_decay = defaultArg exclude_from_weight_decay [||]
-    let name_regex = System.Text.RegularExpressions.Regex("^(.*):\\d+$")
+    let name_regex = Regex("^(.*):\\d+$")
 
-    let get_variable_name(param_name : string) : string = 
+    let get_variable_name(param_name: string) : string = 
         let m = name_regex.Match(param_name) 
         if m.Groups.Count > 1 then m.Groups.[1].Value else param_name
 
     /// Whether to use L2 weight decay for `param_name`.
-    let do_use_weight_decay(param_name : string) = 
+    let do_use_weight_decay(param_name: string) = 
         if weight_decay_rate = 0.0f then false
         else
             exclude_from_weight_decay 
             |> Array.exists param_name.Contains 
             |> not
 
-    member this.Beta1 = beta_1
-    member this.Beta2 = beta_2
-    member this.Epsion = epsilon
-    member this.ExcludeFromWeightDecay = exclude_from_weight_decay
+    member _.Beta1 = beta_1
+    member _.Beta2 = beta_2
+    member _.Epsion = epsilon
+    member _.ExcludeFromWeightDecay = exclude_from_weight_decay
 
     // TODO This should be an override, for some reason this is not wokring
-    //member this.apply_gradients(grads_and_vars : (Tensor*RefVariable)[], ?global_step : RefVariable, ?name : string) : Operation = 
-    member this.apply_gradients2(grads_and_vars : (Tensor*Tensor)[], ?global_step : Tensor, ?name : string) : Operation = 
+    //member _.apply_gradients(grads_and_vars: (Tensor*RefVariable)[], ?global_step: RefVariable, ?name: string): Operation = 
+    member _.apply_gradients2(grads_and_vars: (Tensor*Tensor)[], ?global_step: Tensor, ?name: string): Operation = 
         [|
             for (grad, param) in grads_and_vars do
                 // if grad is None or param is None:
@@ -89,7 +91,7 @@ type AdamWeightDecayOptimizer(learning_rate : Tensor,
 
 
 /// Creates an optimizer training op.
-let create_optimizer(loss : Tensor, init_lr : float32, num_train_steps : int, num_warmup_steps : int option) = 
+let create_optimizer(loss: Tensor, init_lr: float32, num_train_steps: int, num_warmup_steps: int option) = 
     let global_step = tf.get_or_create_global_step()
     //let learning_rate = tf.constant(value = init_lr, shape=[||], dtype = tf.float32)
     let learning_rate = init_lr
@@ -108,7 +110,7 @@ let create_optimizer(loss : Tensor, init_lr : float32, num_train_steps : int, nu
     let learning_rate = 
          match num_warmup_steps with
          | None -> learning_rate
-         | Some(num_warmup_steps) ->
+         | Some num_warmup_steps ->
             let global_steps_init = tf.cast(global_step._AsTensor(), tf.int32)
             let warmup_steps_init = tf.constant(num_warmup_steps, dtype=tf.int32)
 
@@ -128,14 +130,15 @@ let create_optimizer(loss : Tensor, init_lr : float32, num_train_steps : int, nu
 
     let optimizer = 
         AdamWeightDecayOptimizer(learning_rate=learning_rate,
-                                              weight_decay_rate=0.01f,
-                                              beta_1=0.9f,
-                                              beta_2=0.999f,
-                                              epsilon=1e-6f,
-                                              exclude_from_weight_decay=[|"LayerNorm"; "layer_norm"; "bias"|])
+            weight_decay_rate=0.01f,
+            beta_1=0.9f,
+            beta_2=0.999f,
+            epsilon=1e-6f,
+            exclude_from_weight_decay=[|"LayerNorm"; "layer_norm"; "bias"|])
 
     let tvars = tf.trainable_variables() |> Array.map (fun x -> x._variable)
     let grads = tf.gradients(loss, tvars)
+
     // This is how the model was pre-trained.
 
     let (grads, _) = tf.clip_by_global_norm(grads, clip_norm = tf.constant(1.0f))
@@ -145,6 +148,6 @@ let create_optimizer(loss : Tensor, init_lr : float32, num_train_steps : int, nu
     // However, `AdamWeightDecayOptimizer` doesn't do this. But if you use
     // a different optimizer, you should probably take this line out.
     let new_global_step = global_step + 1
-    let train_op = tf.group([|train_op :> ITensorOrOperation; tf.assign(global_step,new_global_step) :> ITensorOrOperation|])
+    let train_op = tf.group [|train_op :> ITensorOrOperation; tf.assign(global_step,new_global_step) :> ITensorOrOperation|]
     train_op
 

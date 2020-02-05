@@ -301,7 +301,7 @@ let get_next_sentence_output(bert_config, input_tensor, labels) =
 //
 //    model_fn
 //
-    failwith "todo"
+//    failwith "todo"
 
 //def input_fn_builder(input_files,
 //                     max_seq_length,
