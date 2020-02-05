@@ -62,7 +62,7 @@ do
     // fixes another bug
     ops.RegisterGradientFunction("GatherV2", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
         /// Converts an IndexedSlices to a Tensor without sparse->dense warnings.
-        let indexedSlicesToTensorNoWarning(indexed_slices : Tensorflow.Framework.IndexedSlices) = 
+        let indexedSlicesToTensorNoWarning(indexed_slices: Tensorflow.Framework.IndexedSlices) = 
             match indexed_slices.dense_shape with
             | null -> raise (ValueError(sprintf "Tensor conversion requested for IndexedSlices without dense_shape: %s"
                  indexed_slices.name))
@@ -89,7 +89,7 @@ do
     ))
 
 module Async =
-    let mapiChunkBySize (chunkSize : int) (f : int -> 'a -> 'b) (xs : 'a[]) =
+    let mapiChunkBySize (chunkSize: int) (f: int -> 'T -> 'b) (xs: 'T[]) =
         xs 
         |> Array.mapi (fun i x -> (i,x))
         |> Array.chunkBySize chunkSize
@@ -100,25 +100,25 @@ module Async =
 
 
 type Tensorflow.variable_scope with
-    member this.name = 
+    member scope.name = 
         let m = typeof<Tensorflow.variable_scope>.GetField("_name", BindingFlags.Instance ||| BindingFlags.NonPublic)
-        m.GetValue(this)  :?> string
+        m.GetValue(scope)  :?> string
 
 let loggingf = printfn
 
 type Tensorflow.tensorflow.train_internal with
-    member this.get_or_create_global_step() : Tensorflow.RefVariable = 
+    member _.get_or_create_global_step(): Tensorflow.RefVariable = 
         failwith "todo"
 
 // https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/training/checkpoint_utils.py#L203-L291
 
 // Replaces `tf.Variable` initializers so they load from a checkpoint file.
 type Tensorflow.tensorflow.train_internal with
-    member this.init_from_checkpoint(ckpt_dir_or_file, assignemnt_map) = 
+    member _.init_from_checkpoint(ckpt_dir_or_file, assignemnt_map) = 
         failwith "todo"
 
 type Tensorflow.tensorflow with
-    member this.constant(values : string[], ?shape : int[], ?name : string) =
+    member _.constant(values: string[], ?shape: int[], ?name: string) =
         let name = defaultArg name "Const"
         let g = ops.get_default_graph()
         let tensor_proto = 
@@ -130,15 +130,15 @@ type Tensorflow.tensorflow with
         let attrs = Dictionary([|"value",AttrValue(Tensor = tensor_proto); "dtype", AttrValue(Type = tensor_proto.Dtype)|] |> dict)
         g.create_op("Const",[||],[|tf.string|],attrs = attrs, name = name).output
 
-    member this.all_variable_names() = 
+    member _.all_variable_names() = 
         let graph = tf.get_default_graph()
         [| for x in graph.get_operations() do if x.op.OpType = "VariableV2" then yield x.op.name|]
 
-    member this.restore(path : string, ?variable_names : string[], ?mapping : string -> string, ?name : string) = 
+    member tf.restore(path: string, ?variable_names: string[], ?mapping: string -> string, ?name: string) = 
         let name = defaultArg name "restore"
         let mapping = defaultArg mapping id
         let graph = tf.get_default_graph()
-        let variable_names = variable_names |> Option.defaultWith (fun _ -> this.all_variable_names())
+        let variable_names = variable_names |> Option.defaultWith (fun _ -> tf.all_variable_names())
         let variables = [| for x in variable_names  -> graph.get_operation_by_name(mapping(x))|]
         let dataTypes = [| for x in variables -> x.op.output.dtype.as_base_dtype()|]
         // TODO proper slices requires making an extra C shim to expose types and mapping
@@ -150,10 +150,10 @@ type Tensorflow.tensorflow with
         tf.group(assignOps,name=name)
 
     // Not tested yet
-    member this.save(path : string, ?variableNames : string[], ?name : string) = 
+    member tf.save(path: string, ?variableNames: string[], ?name: string) = 
         let name = defaultArg name "save"
         let graph = tf.get_default_graph()
-        let variable_names = variableNames |> Option.defaultWith (fun _ -> this.all_variable_names())
+        let variable_names = variableNames |> Option.defaultWith (fun _ -> tf.all_variable_names())
         let variables= variable_names |> Array.map (fun x -> graph.get_operation_by_name(x).output)
         Tensorflow.Operations.gen_ops.save_v2(tf.constant(path),
                         tf.constant(variable_names),
@@ -162,7 +162,7 @@ type Tensorflow.tensorflow with
                         name = name)
 
 module Array = 
-    let shuffleInPlace (xs : 'a[]) = 
+    let shuffleInPlace (xs: 'T[]) = 
         let rand = System.Random()
         let swap (a: _[]) x y =
             let tmp = a.[x]
@@ -170,10 +170,10 @@ module Array =
             a.[y] <- tmp
         Array.iteri (fun i _ -> swap xs i (rand.Next(i, Array.length xs))) xs
 
-    let shuffle (xs : 'a[]) = 
+    let shuffle (xs: 'T[]) = 
         xs |> Array.map id |> fun ys -> ys |> shuffleInPlace; ys
 
-    let subSample (count : int) (xs : 'a[]) =
+    let subSample (count: int) (xs: 'T[]) =
         let rand = System.Random()
         Array.init count (fun _ -> xs.[rand.Next(0,Array.length xs)])
 
@@ -263,15 +263,15 @@ module Auto =
         // If transpose_a and adjoint_a, or transpose_b and adjoint_b
         // are both set to True.
         // </exception>
-        member this.matmul2(a : Tensor, 
-                             b : Tensor, 
-                             ?transpose_a : bool,
-                             ?transpose_b : bool,
-                             ?adjoint_a : bool,
-                             ?adjoint_b : bool,
-                             ?a_is_sparse : bool,
-                             ?b_is_sparse : bool,
-                             ?name : string) = 
+        member _.matmul2(a: Tensor, 
+                    b: Tensor, 
+                    ?transpose_a: bool,
+                    ?transpose_b: bool,
+                    ?adjoint_a: bool,
+                    ?adjoint_b: bool,
+                    ?a_is_sparse: bool,
+                    ?b_is_sparse: bool,
+                    ?name: string) = 
             let transpose_a = defaultArg transpose_a false
             let transpose_b = defaultArg transpose_b false
             let adjoint_a = defaultArg adjoint_a false
@@ -313,7 +313,7 @@ module Auto =
         //<param name="t_lsit"> A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.</param>
         //<param name="name"> A name for the operation (optional).</param>
         //<returns>A 0-D (scalar) `Tensor` of type `float`.</returns>
-        member this.global_norm(t_list : Tensor[], ?name : string) = 
+        member _.global_norm(t_list: Tensor[], ?name: string) = 
             Tensorflow.Binding.tf_with(tf.name_scope(defaultArg name "global_norm", "global_norm", values = t_list ), fun _ -> 
     //            let values = [|
     //                ops.convert_to_tensor(
@@ -365,7 +365,7 @@ module Auto =
         // <param name="name"> A name for the operation (optional).</param>
         // <returns> list_clipped: A list of `Tensors` of the same type as `list_t`.
         //    global_norm: A 0-D (scalar) `Tensor` representing the global norm.</returns>
-        member this.clip_by_global_norm(t_list : Tensor[], clip_norm : Tensor, ?use_norm : Tensor, ?name : string) = 
+        member _.clip_by_global_norm(t_list: Tensor[], clip_norm: Tensor, ?use_norm: Tensor, ?name: string) = 
             let use_norm = use_norm |> Option.defaultWith (fun () -> tf.global_norm(t_list)) 
             let name = defaultArg name "clip_by_global_norm"
             Tensorflow.Binding.tf_with(tf.name_scope(name, "clip_by_global_norm", values = [|yield! t_list; yield clip_norm |]), fun _ -> 
@@ -408,7 +408,7 @@ module Auto =
 
                 list_clipped, use_norm)
 
-        member this.get_or_create_global_step() = 
+        member _.get_or_create_global_step() = 
             let graph = tf.get_default_graph()
             match graph.get_collection(ops.GraphKeys.GLOBAL_STEP_) with
             | :? System.Collections.Generic.List<Tensorflow.VariableV1> as xs -> xs |> Seq.toArray
@@ -424,17 +424,17 @@ module utils =
 //      else:
 //        variable_collections = variables_collections
 //      return variable_collections
-//    let get_variable_collections(variables_collections : string[], name : string) : string[] = 
+//    let get_variable_collections(variables_collections: string[], name: string): string[] = 
 //        variables_collection
 //
-//    let get_variable_collections(variables_collections : Map<string,string[]>, name : string) : string[] = 
+//    let get_variable_collections(variables_collections: Map<string,string[]>, name: string): string[] = 
 //        variable_collections.[name]
 
       ///<summary>Append an alias to the list of aliases of the tensor.</summary>
       ///<param name=tensor>A `Tensor`</param>
       ///<param name=alias>String, to add to the list of aliases of the tensor.</param>
       ///<returns> The tensor with a new alias appended to its list of aliases.</returns>
-    let append_tensor_alias(tensor : Tensor, alias : string) = 
+    let append_tensor_alias(tensor: Tensor, alias: string) = 
         let dropSlash(x:string) = 
             if x.[x.Length-1] = '/' 
             then if x = "/" then "" else x.[.. x.Length - 2] 
@@ -442,7 +442,7 @@ module utils =
 
 //        let alias = dropSlash(alias)
 ////    TODO - tensors do not have alias yet. We're ignoring this for now
-//          if hasattr(tensor, 'aliases'):
+//          if hasattr(tensor, 'Tliases'):
 //            tensor.aliases.append(alias)
 //          else:
 //            tensor.aliases = [alias]
@@ -450,7 +450,7 @@ module utils =
         tensor
 
 //https://github.com/tensorflow/tensorflow/blob/r1.15/tensorflow/contrib/layers/python/layers/utils.py
-    let collect_named_outputs(collections : string[], alias : string, outputs : Tensor) = 
+    let collect_named_outputs(collections: string[], alias: string, outputs: Tensor) = 
         if collections.Length > 0 then 
             ops.add_to_collections(System.Collections.Generic.List<string>(collections), outputs)
         outputs
@@ -458,37 +458,36 @@ module utils =
 // SEE https://stackoverflow.com/questions/47608357/difference-between-get-variable-and-model-variable-function
 //https://github.com/tensorflow/tensorflow/blob/r1.3/tensorflow/contrib/framework/python/ops/variables.py
 type variables with
-    static member model_variable(name : string, 
-                                 shape : TensorShape, 
-                                 dtype : TF_DataType, 
-                                 initializer : IInitializer,
-                                 collections : string[],
-                                 trainable : bool) = 
+    static member model_variable(name: string, 
+                                 shape: TensorShape, 
+                                 dtype: TF_DataType, 
+                                 initializer: IInitializer,
+                                 collections: string[],
+                                 trainable: bool) = 
 
         let collections = System.Collections.Generic.List<string>(collections)
         collections.Add(ops.GraphKeys.GLOBAL_VARIABLES_)
         collections.Add(ops.GraphKeys.MODEL_VARIABLES_)
 
-        let v = 
-            tf.get_variable(name,
-                            shape = shape,
-                            dtype = dtype,
-                            initializer = initializer,
-                            collections = collections,
-                            trainable = Nullable(trainable))
-        v
+        tf.get_variable(name,
+            shape = shape,
+            dtype = dtype,
+            initializer = initializer,
+            collections = collections,
+            trainable = Nullable(trainable))
 
 
 type Layers () = 
-    static member dense(input : Tensor, 
-                        units : int, 
-                        ?activation : IActivation, 
-                        ?use_bias : bool,
-                        ?kernel_initializer : IInitializer,
-                        ?bias_initializer : IInitializer,
-                        ?trainable : Nullable<bool>,
-                        ?reuse : Nullable<bool>,
-                        ?name : string) =
+    static member dense(input: Tensor, 
+                    units: int, 
+                    ?activation: IActivation, 
+                    ?use_bias: bool,
+                    ?kernel_initializer: IInitializer,
+                    ?bias_initializer: IInitializer,
+                    ?trainable: Nullable<bool>,
+                    ?reuse: Nullable<bool>,
+                    ?name: string) =
+
         let dtype = input.dtype
         let name = defaultArg name String.Empty
         let reuse = defaultArg reuse (Nullable<bool>())
@@ -552,15 +551,16 @@ type Layers () =
     /// <param name="variance_epsilon"> A small float number to avoid dividing by 0.</param>
     /// <param name="name"> A name for this operation (optional).</param>
     /// <returns> the normalized, scaled, offset tensor.</returns>
-    static member batch_normalization(x : Tensor,
-                                      mean : Tensor,
-                                      variance : Tensor,
-                                      ?offset : Tensor,
-                                      ?scale : Tensor,
-                                      ?epsilon : float,
-                                      ?name : string) =
+    static member batch_normalization(x: Tensor,
+                    mean: Tensor,
+                    variance: Tensor,
+                    ?offset: Tensor,
+                    ?scale: Tensor,
+                    ?epsilon: float,
+                    ?name: string) =
+
         let epsilon = defaultArg epsilon 1.0e-6
-        let inputs : Tensor[] = [| Some(x); Some(mean); Some(variance); scale; offset|] |> Array.choose id
+        let inputs: Tensor[] = [| Some(x); Some(mean); Some(variance); scale; offset|] |> Array.choose id
         Tensorflow.Binding.tf_with(ops.name_scope("batchnorm","batchnorm",inputs), fun ns ->
             let inv = math_ops.rsqrt(variance + epsilon)
             let inv2 = match scale with | Some(scale) -> inv * scale | _ -> inv
@@ -605,10 +605,10 @@ type Layers () =
     /// <param name="trainable"> If `True` also add variables to the graph collection
     ///   `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).</param>
     /// <param name="begin_norm_axis"> The first normalization dimension: normalization will be
-    ///   performed along dimensions `begin_norm_axis : rank(inputs)` </param>
+    ///   performed along dimensions `begin_norm_axis: rank(inputs)` </param>
     /// <param name="begin_params_axis"> The first parameter (beta, gamma) dimension: scale and
     ///  centering parameters will have dimensions 
-    ///  `begin_params_axis : rank(inputs)` and will be broadcast with the
+    ///  `begin_params_axis: rank(inputs)` and will be broadcast with the
     ///    normalized inputs accordingly. </param>
     /// <param name="scope"> Optional scope for `variable_scope`.</param>
     /// <returns>A `Tensor` representing the output of the operation, having the same
@@ -617,18 +617,18 @@ type Layers () =
     /// If the rank of `inputs` is not known at graph build time,
     /// or if `inputs.shape[begin_params_axis:]` is not fully defined at
     /// graph build time.  </exception>
-    static member layer_norm(inputs : Tensor,
-                             ?center : bool,
-                             ?scale : bool,
-                             ?activation_fn : IActivation,
-                             ?reuse : bool, 
-                             ?variables_collections : Map<string,string[]>, 
-                             ?output_collections : string[], 
-                             ?trainable : bool,
-                             ?begin_norm_axis : int,
-                             ?begin_params_axis : int,
-                             ?scope : string,
-                             ?name : string) = 
+    static member layer_norm(inputs: Tensor,
+                    ?center: bool,
+                    ?scale: bool,
+                    ?activation_fn: IActivation,
+                    ?reuse: bool, 
+                    ?variables_collections: Map<string,string[]>, 
+                    ?output_collections: string[], 
+                    ?trainable: bool,
+                    ?begin_norm_axis: int,
+                    ?begin_params_axis: int,
+                    ?scope: string,
+                    ?name: string) = 
 
         //let scope = defaultArg scope "LayerNorm"
         let name = defaultArg name String.Empty
@@ -652,11 +652,14 @@ type Layers () =
             let inputs_rank = inputs_shape.Length 
             if inputs_rank = 0 then
                 raise (ValueError(sprintf "Inputs %s has undefined rank." inputs.name))
+
             let dtype = inputs.dtype.as_base_dtype()
             let begin_norm_axis = 
-                if begin_norm_axis < 0 
-                then inputs_rank + begin_norm_axis
-                else begin_norm_axis
+                if begin_norm_axis < 0 then
+                    inputs_rank + begin_norm_axis
+                else 
+                    begin_norm_axis
+
             if begin_params_axis >= inputs_rank || begin_norm_axis >= inputs_rank then
                 raise (ValueError(sprintf "begin_params_axis (%d) and begin_norm_axis (%d) must be < rank(inputs) (%d)"
                                     begin_params_axis begin_norm_axis inputs_rank))
@@ -669,10 +672,10 @@ type Layers () =
             if not(params_shape.is_fully_defined()) then
                 raise (ValueError(sprintf "Inputs %s: shape(inputs)[%i:] is not fully defined: %i"
                                     inputs.name begin_params_axis inputs_rank))
+
             // Allocate parameters for the beta and gamma of the normalization.
-            let beta : Tensor option = 
-                if center 
-                then
+            let beta = 
+                if center then
                     //let beta_collections = utils.get_variable_collections(variables_collections,"beta")
                     let beta_collections = variables_collections.["beta"]
                     variables.model_variable("beta",
@@ -682,9 +685,9 @@ type Layers () =
                                              collections = beta_collections,
                                              trainable = trainable )._AsTensor() |> Some
                 else None
-            let gamma : Tensor option = 
-                if scale 
-                then
+
+            let gamma = 
+                if scale then
                     //let gamma_collections = utils.get_variable_collections(variables_collections,"gamma")
                     let gamma_collections = variables_collections.["gamma"]
                     variables.model_variable("gamma",
@@ -695,9 +698,11 @@ type Layers () =
                                              trainable = trainable )._AsTensor() |> Some
                     
                 else None
+
             // By default, compute the moments across all the dimensions except the one with index 0.
             let norm_axes = [|begin_norm_axis .. inputs_rank - 1|] // todo, perhaps fix this??
             let (mean, variance) = tf.nn.moments(inputs, norm_axes, keep_dims = true).ToTuple()
+
             // Compute layer normalization using the batch_normalization function.
             // Note that epsilon must be increased for float16 due to the limited
             // representable range.
@@ -722,7 +727,7 @@ type Utils() =
     /// <param name="dropout_prob">float. The probability of dropping out a value 
     /// (NOT of *keeping* a value as in `tf.nn.dropout`).</param>
     /// <returns>A version of `input_tensor` with dropout applied</returns>
-    static member dropout(input_tensor, dropout_prob : float32) =
+    static member dropout(input_tensor, dropout_prob: float32) =
         if dropout_prob = 0.0f
         then input_tensor
         else tf.nn.dropout(input_tensor, tf.constant(1.0f - dropout_prob))
@@ -731,11 +736,10 @@ type Utils() =
     static member layer_norm(input_tensor) =
       Layers.layer_norm(inputs=input_tensor, begin_norm_axis = -1, begin_params_axis = -1)
 
-    
-    /// <summary>Runs layer normalization followed by dropout.</summary>
+    /// Runs layer normalization followed by dropout.
     static member layer_norm_and_dropout(input_tensor: Tensor, dropout_prob: float32) =
         Utils.dropout(Utils.layer_norm(input_tensor),dropout_prob)
 
-    /// <summary>Creates a `truncated_normal_initializer` with the given range.</summary>
+    /// Creates a `truncated_normal_initializer` with the given range.
     static member create_initializer(?initializer_range: float32) =
         tf.truncated_normal_initializer(stddev = defaultArg initializer_range 0.02f)

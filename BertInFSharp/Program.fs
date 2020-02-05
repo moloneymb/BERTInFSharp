@@ -4,7 +4,7 @@ open Tensorflow
 
 type BertModelTester() = 
     /// Creates a random int32 tensor of the shape within the vocab size.
-    static member ids_tensor(shape : int[], vocab_size : int, ?rng : Random, ?name : string) = 
+    static member ids_tensor(shape: int[], vocab_size: int, ?rng: Random, ?name: string) = 
         let rng = defaultArg rng (Random())
         let total_dims = shape |> Array.fold (fun x y -> x*y) 1
         let data = [|for i in 0 .. total_dims - 1 -> rng.Next(vocab_size)|]
