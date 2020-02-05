@@ -90,10 +90,10 @@ type Arguments =
 // num_tpu_cores 8
 
 type IExample = 
-    abstract member guid : Guid option
-    abstract member text_a : string
-    abstract member text_b : string option
-    abstract member label : string
+    abstract member guid: Guid option
+    abstract member text_a: string
+    abstract member text_b: string option
+    abstract member label: string
 
 // <summary>A single training/test example for simple sequence classification </summary>
 // <param name="guid">Unique id for the example.</param>
@@ -103,7 +103,7 @@ type IExample =
 //  Only must be specified for sequence pair tasks.</param>
 // <param name="label"> (Optional) string. The label of the example. This should be
 // specified for train and dev examples, but not for test examples </param>
-type InputExample(?guid : System.Guid, ?text_a : string, ?text_b : string, ?label : string) = 
+type InputExample(?guid: System.Guid, ?text_a: string, ?text_b: string, ?label: string) = 
     interface IExample with
         member _.guid = guid 
         member _.text_a = defaultArg text_a String.Empty
@@ -122,10 +122,10 @@ type PaddingInputExample() =
     end
 
 /// A single set of features of data.
-type InputFeatures(input_ids : int[],
-                   input_mask : int[],
-                   segment_ids : int[],
-                   label_id : int,
+type InputFeatures(input_ids: int[],
+                   input_mask: int[],
+                   segment_ids: int[],
+                   label_id: int,
                    ?is_real_example) =
     member _.input_ids = input_ids
     member _.input_mask = input_mask
@@ -136,24 +136,24 @@ type InputFeatures(input_ids : int[],
 /// NOTE: Should I get rid of the default methods
 /// Base class for data converters for sequence classification data sets.
 type DataProcessor() = 
-    abstract member get_train_examples : string -> string
+    abstract member get_train_examples: string -> string
     /// Gets a collection of `InputExample`s for the train set.
     default _.get_train_examples(data_dir) = raise (System.NotImplementedException())
 
-    abstract member get_dev_examples : string -> string
+    abstract member get_dev_examples: string -> string
     /// Gets a collection of `InputExample`s for the dev set.
     default _.get_dev_examples(data_dir) = raise (System.NotImplementedException())
 
-    abstract member get_test_examples : string -> string
+    abstract member get_test_examples: string -> string
     /// Gets a collection of `InputExample`s for prediction.
     default _.get_test_examples (data_dir) = raise (System.NotImplementedException())
 
-    abstract member get_labels : unit -> string []
+    abstract member get_labels: unit -> string []
     /// Gets the list of labels for this data set."""
     default _.get_labels () = raise (System.NotImplementedException())
 
     /// Reads a tab separated value file.
-    static member private read_tsv(input_file : string, ?quotechar : char)  =
+    static member private read_tsv(input_file: string, ?quotechar: char)  =
         let reader = new System.IO.StreamReader(input_file)
         let config = CsvHelper.Configuration.Configuration(Delimiter = "\t", Quote = (defaultArg quotechar '"'))
         use csv = new CsvHelper.CsvReader(reader, config)
@@ -161,7 +161,7 @@ type DataProcessor() =
         else 
             // NOTE this is a hack because csv.Context.ColumnCount always returned 0 in testing
             // and there seemed to be no other way to get the column count
-            let rec getColumns(col : int) = 
+            let rec getColumns(col: int) = 
                 try 
                     csv.[col] |> ignore
                     getColumns(col+1)
@@ -177,7 +177,7 @@ type DataProcessor() =
 
 
 /// Truncates a sequence pair in place to the maximum length.
-let truncate_seq_pair(tokens_a : 'a[], tokens_b : 'a[], max_length : int) = 
+let truncate_seq_pair(tokens_a: 'a[], tokens_b: 'a[], max_length: int) = 
   // This is a simple heuristic which will always truncate the longer sequence
   // one token at a time. This makes more sense than truncating an equal percent
   // of tokens from each, since if one sequence is very short then each token
@@ -193,7 +193,7 @@ let truncate_seq_pair(tokens_a : 'a[], tokens_b : 'a[], max_length : int) =
                 f(length_a,length_b-1)
     f(tokens_a.Length, tokens_b.Length )
 
-let padding_input_example_to_iexample(example : PaddingInputExample, max_seq_length : int) = 
+let padding_input_example_to_iexample(example: PaddingInputExample, max_seq_length: int) = 
             let zeroVector = Array.create max_seq_length 0
             InputFeatures(input_ids = zeroVector,
                           input_mask = zeroVector,
@@ -202,7 +202,7 @@ let padding_input_example_to_iexample(example : PaddingInputExample, max_seq_len
                           is_real_example = false)  
 
 /// Converts a single `InputExample` into a single `InputFeatures`.
-let convert_single_example (ex_index : int, example : IExample, label_map : Map<string,int>, max_seq_length : int, tokenizer : ITokenizer) = 
+let convert_single_example (ex_index: int, example: IExample, label_map: Map<string,int>, max_seq_length: int, tokenizer: ITokenizer) = 
     //let example = 
 //        match example with
 //        | :? PaddingInputExample as x -> 
@@ -290,7 +290,7 @@ let convert_single_example (ex_index : int, example : IExample, label_map : Map<
 // NOTE: This function is not used by this file but is still used by the Colab and
 // people who depend on it.
 /// Convert a set of `InputExample`s to a list of `InputFeatures`.
-let convert_examples_to_features(examples : IExample[], label_map, max_seq_length : int, tokenizer : ITokenizer) =
+let convert_examples_to_features(examples: IExample[], label_map, max_seq_length: int, tokenizer: ITokenizer) =
     examples |> Async.mapiChunkBySize 200 (fun ex_index example -> 
         if ex_index % 10000 = 0 then
             loggingf "Writing example %d of %d" ex_index examples.Length
