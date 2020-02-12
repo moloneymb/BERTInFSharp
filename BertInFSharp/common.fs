@@ -26,13 +26,18 @@ let os =
     elif platformId = PlatformID.Unix then Linux
     else Windows
 
+let UseGPU = false
+
 // TODO detect NVidia GPU, currently assuming CPU on windows and GPU on linux
 
 let redistPackage = 
-    match os with 
-    | Linux -> "scisharp.tensorflow.redist-linux-gpu","1.15.0"  // NOTE This does not exist yet (as of 2/5/2020), previous version do not work
-    | Windows -> "scisharp.tensorflow.redist", "1.14.1" // NOTE 1.15.0 does not work (yet?)
-    | _ -> failwith "unsupported"
+    if UseGPU then
+        match os with 
+        | Linux -> failwith "todo" //"scisharp.tensorflow.redist-linux-gpu","1.15.0"  // NOTE This does not exist yet (as of 2/5/2020), previous version do not work
+        | _ -> failwith "todo"
+    else
+        "scisharp.tensorflow.redist", "1.14.1"
+
 
 let dir = Path.Combine(__SOURCE_DIRECTORY__, "..")
 let data = Path.Combine(dir, "data")

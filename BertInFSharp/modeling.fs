@@ -619,8 +619,8 @@ type BertModel(config: BertConfig,
                 if use_position_embeddings then
                     // TODO add an assert_less_equal
                     //let assert_op = tf.assert_less_equal(seq_length, max_position_embeddings)
-                    let assert_op = tf.assert_equal(seq_length, max_position_embeddings)
-                    use _cd = tf.control_dependencies([|assert_op|])
+                    //let assert_op = tf.assert_equal(seq_length, max_position_embeddings)
+                    //use _cd = tf.control_dependencies([|assert_op|])
                     let full_position_embeddings = 
                         tf.get_variable(name = position_embedding_name,
                                         shape = TensorShape(max_position_embeddings, width),
