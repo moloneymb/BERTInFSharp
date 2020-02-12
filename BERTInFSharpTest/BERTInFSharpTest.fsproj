@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <None Include="predicting_movie_reviews_with_bert.fsx" />
-    <None Include="Scratch.fsx" />
     <Compile Include="pretrained_test.fs" />
     <Compile Include="optimization_test.fs" />
     <Compile Include="modelling_test.fs" />
