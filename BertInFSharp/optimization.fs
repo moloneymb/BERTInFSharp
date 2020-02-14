@@ -140,7 +140,6 @@ let create_optimizer(loss: Tensor, init_lr: float32, num_train_steps: int, num_w
     let grads = tf.gradients(loss, tvars)
 
     // This is how the model was pre-trained.
-
     let (grads, _) = tf.clip_by_global_norm(grads, clip_norm = tf.constant(1.0f))
     let train_op = optimizer.apply_gradients2((grads, tvars) ||> Array.zip, global_step = global_step._AsTensor())
 

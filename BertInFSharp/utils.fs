@@ -10,83 +10,96 @@ type gen_ops = Tensorflow.Operations.gen_ops
 
 let tf = Tensorflow.Binding.tf
 
-do
-    ops.RegisterGradientFunction("Sqrt",Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
-        let grad = grads.[0]
-        let y = op.outputs.[0]
-        [|gen_ops.sqrt_grad(y,grad)|]))
+module vs = 
+    let variable_scope(name : string) =
+        let vs = tf.variable_scope(name)
+        vs.__init__()
+        vs.__enter__()
+        {new IDisposable with 
+            member this.Dispose() = 
+                vs.__exit__()
+                vs.__del__()}
 
-    ops.RegisterGradientFunction("Rsqrt",Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
-        let grad = grads.[0]
-        let y = op.outputs.[0]
-        [|gen_ops.rsqrt_grad(y,grad)|]))
+let init =
+    lazy
+        ops.RegisterGradientFunction("Sqrt",Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
+            let grad = grads.[0]
+            let y = op.outputs.[0]
+            [|gen_ops.sqrt_grad(y,grad)|]))
 
-    /// Returns the gradient for (x-y)^2.
-    ops.RegisterGradientFunction("SquaredDifference",Func<Operation,Tensor[],Tensor[]>(fun op grads ->
-        // TODO support skip_input_indices
-        // TODO suport IndexedSlices
-        let x = op.inputs.[0]
-        let y = op.inputs.[1]
-        let grad = grads.[0]
-        let x_grad = 
-            Tensorflow.Binding.tf_with(ops.control_dependencies([|grad|]), fun _ -> 
-                2.0 *  grad * (x - y))
-        if x.TensorShape.is_fully_defined() && y.TensorShape.is_fully_defined() then
-            if x.shape = y.shape 
-            then [|x_grad; -x_grad|]
+        ops.RegisterGradientFunction("Rsqrt",Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
+            let grad = grads.[0]
+            let y = op.outputs.[0]
+            [|gen_ops.rsqrt_grad(y,grad)|]))
+
+        /// Returns the gradient for (x-y)^2.
+        ops.RegisterGradientFunction("SquaredDifference",Func<Operation,Tensor[],Tensor[]>(fun op grads ->
+            // TODO support skip_input_indices
+            // TODO suport IndexedSlices
+            let x = op.inputs.[0]
+            let y = op.inputs.[1]
+            let grad = grads.[0]
+            let x_grad = 
+                Tensorflow.Binding.tf_with(ops.control_dependencies([|grad|]), fun _ -> 
+                    2.0 *  grad * (x - y))
+            if x.TensorShape.is_fully_defined() && y.TensorShape.is_fully_defined() then
+                if x.shape = y.shape 
+                then [|x_grad; -x_grad|]
+                else
+                    match x.shape,y.shape with
+                    | [|_;1|],_ -> [|array_ops.reshape(math_ops.reduce_sum(x_grad,1),x.shape);-x_grad|]
+                    | _,[|_;1|] -> [|x_grad;-array_ops.reshape(math_ops.reduce_sum(x_grad,1),y.shape)|]
+                    | [|_;_;1|],_ -> [|array_ops.reshape(math_ops.reduce_sum(x_grad,2),x.shape);-x_grad|]
+                    | _,[|_;_;1|] -> [|x_grad;-array_ops.reshape(math_ops.reduce_sum(x_grad,2),y.shape)|]
+                    | _ -> failwith "fix hack"
             else
-                match x.shape,y.shape with
-                | [|_;1|],_ -> [|array_ops.reshape(math_ops.reduce_sum(x_grad,1),x.shape);-x_grad|]
-                | _,[|_;1|] -> [|x_grad;-array_ops.reshape(math_ops.reduce_sum(x_grad,1),y.shape)|]
-                | [|_;_;1|],_ -> [|array_ops.reshape(math_ops.reduce_sum(x_grad,2),x.shape);-x_grad|]
-                | _,[|_;_;1|] -> [|x_grad;-array_ops.reshape(math_ops.reduce_sum(x_grad,2),y.shape)|]
-                | _ -> failwith "fix hack"
-        else
-            failwith "todo"
+                failwith "todo"
+            ))
+
+        /// Fixes bug
+        ops.RegisterGradientFunction("Slice", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
+            let grad = grads.[0]
+            let input_vec = op.inputs.[0]
+            let begin_vec = op.inputs.[1]
+            let input_rank = array_ops.rank(input_vec)
+            let slice_size = array_ops.shape(op.outputs.[0])
+            let shape = array_ops.stack([|input_rank; tf.constant(1)|])
+            let before_pad = array_ops.reshape(begin_vec, shape)
+            let after_pad = array_ops.reshape(array_ops.shape(input_vec) - slice_size - begin_vec, shape)
+            let paddings = array_ops.concat([|before_pad; after_pad|], 1)
+            [|array_ops.pad(grad, paddings); null; null|]
         ))
 
-    /// Fixes bug
-    ops.RegisterGradientFunction("Slice", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
-        let grad = grads.[0]
-        let input_vec = op.inputs.[0]
-        let begin_vec = op.inputs.[1]
-        let input_rank = array_ops.rank(input_vec)
-        let slice_size = array_ops.shape(op.outputs.[0])
-        let shape = array_ops.stack([|input_rank; tf.constant(1)|])
-        let before_pad = array_ops.reshape(begin_vec, shape)
-        let after_pad = array_ops.reshape(array_ops.shape(input_vec) - slice_size - begin_vec, shape)
-        let paddings = array_ops.concat([|before_pad; after_pad|], 1)
-        [|array_ops.pad(grad, paddings); null; null|]
-    ))
+        // fixes another bug
+        ops.RegisterGradientFunction("GatherV2", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
+            /// Converts an IndexedSlices to a Tensor without sparse->dense warnings.
+            let indexedSlicesToTensorNoWarning(indexed_slices: Tensorflow.Framework.IndexedSlices) = 
+                match indexed_slices.dense_shape with
+                | null -> raise (ValueError(sprintf "Tensor conversion requested for IndexedSlices without dense_shape: %s"
+                     indexed_slices.name))
+                | _ -> math_ops.unsorted_segment_sum(indexed_slices.values,
+                                                     indexed_slices.indices,
+                                                     indexed_slices.dense_shape.slice(0))
 
-    // fixes another bug
-    ops.RegisterGradientFunction("GatherV2", Func<Operation,Tensor[],Tensor[]>(fun op grads -> 
-        /// Converts an IndexedSlices to a Tensor without sparse->dense warnings.
-        let indexedSlicesToTensorNoWarning(indexed_slices: Tensorflow.Framework.IndexedSlices) = 
-            match indexed_slices.dense_shape with
-            | null -> raise (ValueError(sprintf "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-                 indexed_slices.name))
-            | _ -> math_ops.unsorted_segment_sum(indexed_slices.values,
-                                                 indexed_slices.indices,
-                                                 indexed_slices.dense_shape.slice(0))
+            let grad = grads.[0]
+            let ps = op.inputs.[0]
+            ops.colocate_with(ps)
+            let params_shape = array_ops.shape(ps, out_type = tf.int32)
+            let indices = op.inputs.[1]
+            let indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
+            let axis = op.inputs.[2]
+            let axis_static = tensor_util.constant_value(axis)
+            if int axis_static = 0 then
+                let params_tail_shape = params_shape.slice(NumSharp.Slice(start = Nullable(1)));
+                let values_shape = array_ops.concat([|indices_size; params_tail_shape|], 0);
+                let values = array_ops.reshape(grad, values_shape);
+                let indices = array_ops.reshape(indices, indices_size);
+                let indexed_slices = Tensorflow.Framework.IndexedSlices(values, indices, params_shape)
+                [| indexedSlicesToTensorNoWarning(indexed_slices); null; null|]
+            else failwith "only supports static axis of 0 at this time"
+        ))
 
-        let grad = grads.[0]
-        let ps = op.inputs.[0]
-        ops.colocate_with(ps)
-        let params_shape = array_ops.shape(ps, out_type = tf.int32)
-        let indices = op.inputs.[1]
-        let indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
-        let axis = op.inputs.[2]
-        let axis_static = tensor_util.constant_value(axis)
-        if int axis_static = 0 then
-            let params_tail_shape = params_shape.slice(NumSharp.Slice(start = Nullable(1)));
-            let values_shape = array_ops.concat([|indices_size; params_tail_shape|], 0);
-            let values = array_ops.reshape(grad, values_shape);
-            let indices = array_ops.reshape(indices, indices_size);
-            let indexed_slices = Tensorflow.Framework.IndexedSlices(values, indices, params_shape)
-            [| indexedSlicesToTensorNoWarning(indexed_slices); null; null|]
-        else failwith "only supports static axis of 0 at this time"
-    ))
+let setup() = init.Force()
 
 module Async =
     let mapiChunkBySize (chunkSize: int) (f: int -> 'T -> 'b) (xs: 'T[]) =
@@ -264,14 +277,14 @@ module Auto =
         // are both set to True.
         // </exception>
         member _.matmul2(a: Tensor, 
-                    b: Tensor, 
-                    ?transpose_a: bool,
-                    ?transpose_b: bool,
-                    ?adjoint_a: bool,
-                    ?adjoint_b: bool,
-                    ?a_is_sparse: bool,
-                    ?b_is_sparse: bool,
-                    ?name: string) = 
+                b: Tensor, 
+                ?transpose_a: bool,
+                ?transpose_b: bool,
+                ?adjoint_a: bool,
+                ?adjoint_b: bool,
+                ?a_is_sparse: bool,
+                ?b_is_sparse: bool,
+                ?name: string) = 
             let transpose_a = defaultArg transpose_a false
             let transpose_b = defaultArg transpose_b false
             let adjoint_a = defaultArg adjoint_a false
@@ -441,7 +454,7 @@ module utils =
             else x
 
 //        let alias = dropSlash(alias)
-////    TODO - tensors do not have alias yet. We're ignoring this for now
+////    TODO - tensors do not have alias yet. We are ignoring this for now
 //          if hasattr(tensor, 'Tliases'):
 //            tensor.aliases.append(alias)
 //          else:
@@ -455,7 +468,7 @@ module utils =
             ops.add_to_collections(System.Collections.Generic.List<string>(collections), outputs)
         outputs
         
-// SEE https://stackoverflow.com/questions/47608357/difference-between-get-variable-and-model-variable-function
+// see https://stackoverflow.com/questions/47608357/difference-between-get-variable-and-model-variable-function
 //https://github.com/tensorflow/tensorflow/blob/r1.3/tensorflow/contrib/framework/python/ops/variables.py
 type variables with
     static member model_variable(name: string, 
@@ -494,7 +507,6 @@ type Layers () =
         let trainable = defaultArg trainable (Nullable<bool>())
         let use_bias = defaultArg use_bias true
         let bias_initializer = defaultArg bias_initializer tf.zeros_initializer
-        //Tensorflow.Binding.tf_with(tf.name_scope("dense","dense",[|input|]), fun (ns:Tensorflow.ops.NameScope) ->
         Tensorflow.Binding.tf_with(tf.variable_scope(name,"dense",reuse=reuse), fun _vs ->
             match input.shape with
             | [|_;n|] when n > 0 ->
@@ -512,7 +524,6 @@ type Layers () =
             | _ ->
                 raise (ValueError(sprintf "Input shape of %A is not suitable for a dense network " input.shape))
         )
-        //)
 
     // https://github.com/tensorflow/tensorflow/blob/r2.0/tensorflow/python/ops/nn_impl.py#L1382-L1442
     ///<summary>Batch normalization.
@@ -639,7 +650,6 @@ type Layers () =
         let begin_params_axis = defaultArg begin_params_axis 1
         let variables_collections = defaultArg variables_collections (Map(["beta",[||];"gamma",[||]]))
         
-        //Tensorflow.Binding.tf_with(tf.name_scope("LayerNorm"), fun _ ->
         Tensorflow.Binding.tf_with(
             tf.variable_scope(name, 
                               "LayerNorm", 
@@ -718,7 +728,6 @@ type Layers () =
             let outputs = match activation_fn with | None -> outputs | Some(f) -> f.Activate(outputs)
             utils.collect_named_outputs(defaultArg output_collections Array.empty<string>, vs.name, outputs)
             )
-            //)
 
 
 type Utils() =

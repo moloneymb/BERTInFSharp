@@ -6,7 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="BERT_testing.fsx" />
     <Compile Include="utils.fs" />
     <Compile Include="common.fs" />
     <Compile Include="tokenization.fs" />
@@ -15,7 +14,6 @@
     <Compile Include="modeling.fs" />
     <Compile Include="run_pretraining.fs" />
     <Compile Include="Program.fs" />
-    <None Include="predicting_movie_reviews_with_bert.fsx" />
   </ItemGroup>
 
   <ItemGroup>

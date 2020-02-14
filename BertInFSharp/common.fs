@@ -26,15 +26,22 @@ let os =
     elif platformId = PlatformID.Unix then Linux
     else Windows
 
-let UseGPU = false
+let UseGPU = 
+    try 
+        ()
+        true
+    with
+    | :? DllNotFoundException -> 
+        false
 
 // TODO detect NVidia GPU, currently assuming CPU on windows and GPU on linux
 
 let redistPackage = 
     if UseGPU then
         match os with 
-        | Linux -> failwith "todo" //"scisharp.tensorflow.redist-linux-gpu","1.15.0"  // NOTE This does not exist yet (as of 2/5/2020), previous version do not work
-        | _ -> failwith "todo"
+        | Linux -> "scisharp.tensorflow.redist-linux-gpu","1.15.1"  
+        | Windows -> "scisharp.tensorflow.redist-windows-gpu","1.14.1"  
+        | OSX -> failwith "no available GPU redist at this time"
     else
         "scisharp.tensorflow.redist", "1.14.1"
 
@@ -44,7 +51,8 @@ let data = Path.Combine(dir, "data")
 let chkpt = Path.Combine(dir, "chkpt")
 let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 let nuget = Path.Combine(home,".nuget","packages")
-let chkptUrl = "https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip"
+let pretrainedVersion = "uncased_L-12_H-768_A-12"
+let chkptUrl = sprintf "https://storage.googleapis.com/bert_models/2018_10_18/%s.zip" pretrainedVersion
 let dataUrl = "http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz" 
 
 let extractPackagesFromPaths(files : string[]) = 
@@ -117,7 +125,7 @@ let setup() =
                 File.Copy(Path.Combine(srcDir,file),tgtFile)
 
     Directory.CreateDirectory(chkpt) |> ignore
-    let chkptFile = Path.Combine(chkpt,"uncased_L-12_H-768_A-12.zip")
+    let chkptFile = Path.Combine(chkpt, pretrainedVersion + ".zip")
     if not(File.Exists(chkptFile)) then
         fetchAndExtract(chkptUrl,chkptFile,chkpt)
     Directory.CreateDirectory(data) |> ignore
@@ -125,7 +133,7 @@ let setup() =
     if not(File.Exists(dataFile)) then
         fetchAndExtract(dataUrl,dataFile,data)
 
-let vocab_file = Path.Combine(chkpt,"uncased_L-12_H-768_A-12", "vocab.txt")
-let bert_config_file = Path.Combine(chkpt, "uncased_L-12_H-768_A-12", "bert_config.json")
-let bert_chkpt = Path.Combine(chkpt, "uncased_L-12_H-768_A-12","bert_model.ckpt")
+let vocab_file = Path.Combine(chkpt,pretrainedVersion, "vocab.txt")
+let bert_config_file = Path.Combine(chkpt, pretrainedVersion, "bert_config.json")
+let bert_chkpt = Path.Combine(chkpt, pretrainedVersion, "bert_model.ckpt")
 

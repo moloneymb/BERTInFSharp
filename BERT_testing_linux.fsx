@@ -1,10 +1,11 @@
-﻿////"https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1.tar.gz"
-//// TODO get model automatically 
-//// TODO ungzip / untar
+﻿
+//#if WIN
+#I @"C:/Users/moloneymb/.nuget/packages/"
+//#endif
 
-//#I @"C:\Users\moloneymb\.nuget\packages\"
-
+#if LINUX
 #I @"/home/moloneymb/.nuget/packages/"
+#endif
 
 #r @"system.runtime.compilerservices.unsafe/4.5.2/lib/netstandard2.0/System.Runtime.CompilerServices.Unsafe.dll"
 #r @"numsharp/0.20.5/lib/netstandard2.0/NumSharp.Core.dll"
@@ -19,12 +20,14 @@
 #r "System.IO.Compression"
 
 #load @"BertInFSharp/common.fs"
-Common.setup()
 #load @"BertInFSharp/utils.fs"
 #load @"BertInFSharp/tokenization.fs"
 #load @"BertInFSharp/run_classifier.fs"
 #load @"BertInFSharp/modeling.fs"
 #load @"BertInFSharp/optimization.fs"
+
+Common.setup()
+Utils.setup()
 
 #time "on"
 
@@ -55,7 +58,7 @@ let bert_config = BertConfig.from_json_string(File.ReadAllText(Common.bert_confi
 // Compute train and warmup steps from batch size
 // These hyperparameters are copied from this colab notebook (https://colab.sandbox.google.com/github/tensorflow/tpu/blob/master/tools/colab/bert_finetuning_with_cloud_tpus.ipynb)
 
-let BATCH_SIZE = 32
+let BATCH_SIZE = 2
 let NUM_LABELS = 2
 let LEARNING_RATE = 2e-5f
 let MAX_SEQ_LENGTH = 128
@@ -89,6 +92,8 @@ let input_mask = tf.placeholder(tf.int32,TensorShape([|BATCH_SIZE; MAX_SEQ_LENGT
 let labels = tf.placeholder(tf.int32,TensorShape([|BATCH_SIZE|]))
 let bertModel = BertModel(bert_config, false, input_ids = input_ids, input_mask = input_mask)
 
+let ops = tf.get_default_graph().get_operations() 
+
 // create the restore op before the other ops
 let restore = tf.restore(Common.bert_chkpt)
 
@@ -97,8 +102,6 @@ let restore = tf.restore(Common.bert_chkpt)
 let output_layer = bertModel.PooledOutput
 
 let hidden_size = output_layer.shape |> Seq.last
-
-
 
 let output_weights = tf.get_variable("output_weights", 
                                      TensorShape([|hidden_size; NUM_LABELS|]), 
@@ -109,26 +112,28 @@ let output_bias = tf.get_variable("output_bias",
                                   initializer=tf.zeros_initializer)
 
 let (loss, predicted_labels, log_probs) =
-    Tensorflow.Binding.tf_with(tf.variable_scope("loss"), fun _ -> 
-        // Dropout helps prevent overfitting
-        let output_layer = tf.nn.dropout(output_layer, keep_prob=tf.constant(0.9f))
-        let logits = tf.matmul(output_layer, output_weights._AsTensor()) // trained in transpose
-        let logits = tf.nn.bias_add(logits, output_bias)
-        let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))
-        // Convert Labels into one-hot encoding
-        let one_hot_labels = tf.one_hot(labels, depth=NUM_LABELS, dtype=tf.float32)
-        let predicted_labels = tf.squeeze(tf.argmax(log_probs, axis = -1, output_type = tf.int32))
-        /// If we're predicting, we want predicted labels and the probabiltiies.
-        //if is_predicting:
-        //  return (predicted_labels, log_probs)
-        // If we're train/eval, compute loss between predicted and actual label
-        let per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis= Nullable(-1))
-        let loss = tf.reduce_mean(per_example_loss)
-        (loss, predicted_labels, log_probs)
-        )
+    use _loss = vs.variable_scope("loss")
+    // Dropout helps prevent overfitting
+    let output_layer = tf.nn.dropout(output_layer, keep_prob=tf.constant(0.9f))
+    let logits = tf.matmul(output_layer, output_weights._AsTensor()) // trained in transpose
+    let logits = tf.nn.bias_add(logits, output_bias)
+    let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))
+    // Convert Labels into one-hot encoding
+    let one_hot_labels = tf.one_hot(labels, depth=NUM_LABELS, dtype=tf.float32)
+    let predicted_labels = tf.squeeze(tf.argmax(log_probs, axis = -1, output_type = tf.int32))
+    /// If we're predicting, we want predicted labels and the probabiltiies.
+    //if is_predicting:
+    //  return (predicted_labels, log_probs)
+    // If we're train/eval, compute loss between predicted and actual label
+    let per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis= Nullable(-1))
+    let loss = tf.reduce_mean(per_example_loss)
+    (loss, predicted_labels, log_probs)
 
 let num_train_steps = int(float32 train.Length / float32 BATCH_SIZE * NUM_TRAIN_EPOCHS)
 let num_warmup_steps = int(float32 num_train_steps * WARMUP_PROPORTION)
+
+// Train steps should be 400
+// This should be ~43
 
 //num_train_steps
 //1404
@@ -140,25 +145,14 @@ let init = tf.global_variables_initializer()
 sess.run(init)
 sess.run(restore) // load weights
 
-//System.Diagnostics.Debug.WriteLine(sprintf "Training with batch size %i" BATCH_SIZE)
-
-let subsample = train |> Array.subSample BATCH_SIZE 
-let t1 = NDArray(subsample |> Array.map (fun x -> x.input_ids))
-let t2 = NDArray(subsample |> Array.map (fun x -> x.input_mask))
-let t3 = NDArray(subsample |> Array.map (fun x -> match x.label_id with | 1014 -> 0 | 1015 -> 1 | _ -> failwith "err"))
-
-//t3.Data<int32>() |> Seq.toArray
-
-//tokenizer.Vocab.["1"]
-//tokenizer.Vocab.["0"]
+System.Diagnostics.Debug.WriteLine(sprintf "Training with batch size %i" BATCH_SIZE)
 
 let fetchOps = [|
     train_op :> ITensorOrOperation
     loss :> ITensorOrOperation
-    predicted_labels :> ITensorOrOperation
   |]
 
-let res = sess.run(fetchOps, [|FeedItem(input_ids,t1); FeedItem(input_mask,t2); FeedItem(labels,t3)|])
+//let res = sess.run(fetchOps, [|FeedItem(input_ids,t1); FeedItem(input_mask,t2); FeedItem(labels,t3)|])
 
 let xs = 
   [|
@@ -173,6 +167,9 @@ let xs =
       yield acc
   |]
 
+//let ops = tf.get_default_graph().get_operations() 
+//open System.IO
+//File.WriteAllLines(@"C:\EE\ops.txt",ops |> Array.map (fun x -> x.name))
 //let ndres = NDArray(res)
 //np.save("train.npy", ndres)
 

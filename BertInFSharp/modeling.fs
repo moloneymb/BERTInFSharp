@@ -31,8 +31,6 @@ module Activation =
     let Tanh  = Operations.Activation.tanh()
     let Linear = Operations.Activation.linear()
 
-
-
 /// Configuration for `BertModel`.
 type BertConfig = 
     { 
@@ -163,12 +161,12 @@ type BertConfig =
 /// <exception cref="Tensorflow.ValueError"> The config is invalid or one of the input tensor shapes
 /// is invalid </exception>
 type BertModel(config: BertConfig, 
-               is_training: bool, 
-               input_ids: Tensor,
-               ?input_mask: Tensor,
-               ?token_type_ids: Tensor,
-               ?use_one_hot_embeddings: bool,
-               ?scope: string) = 
+        is_training: bool, 
+        input_ids: Tensor,
+        ?input_mask: Tensor,
+        ?token_type_ids: Tensor,
+        ?use_one_hot_embeddings: bool,
+        ?scope: string) = 
 
     let scope = defaultArg scope "bert"
     let use_one_hot_embeddings = defaultArg use_one_hot_embeddings false
@@ -186,77 +184,70 @@ type BertModel(config: BertConfig,
     let vocab_size = defaultArg config.vocab_size -1 // TODO figure out if this should be an error
 
     let (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output) =
-    //Tensorflow.Binding.tf_with(tf.name_scope(scope, default_name = "bert"), fun _ -> 
-        Tensorflow.Binding.tf_with(
-            tf.variable_scope(scope, default_name="bert"),
-            fun _ ->
-            let (embedding_output, embedding_table) = 
-                //Tensorflow.Binding.tf_with(tf.name_scope("embeddings"), fun _ -> 
-                Tensorflow.Binding.tf_with(tf.variable_scope("embeddings"), fun _ ->
-                    let (embedding_output, embedding_table) =
-                        BertModel.embedding_lookup(
-                            input_ids=input_ids,
-                            vocab_size=vocab_size,
-                            embedding_size=config.hidden_size,
-                            initializer_range=config.initializer_range,
-                            word_embedding_name="word_embeddings",
-                            use_one_hot_embeddings=use_one_hot_embeddings)
+        use _bert = vs.variable_scope(scope)
+        let (embedding_output, embedding_table) = 
+            use _embeddings = vs.variable_scope("embeddings")
+            let (embedding_output, embedding_table) =
+                BertModel.embedding_lookup(
+                    input_ids=input_ids,
+                    vocab_size=vocab_size,
+                    embedding_size=config.hidden_size,
+                    initializer_range=config.initializer_range,
+                    word_embedding_name="word_embeddings",
+                    use_one_hot_embeddings=use_one_hot_embeddings)
 
-                    let embedding_output = 
-                        BertModel.embedding_postprocessor(
-                            input_tensor=embedding_output,
-                            use_token_type=true,
-                            token_type_ids=token_type_ids,
-                            token_type_vocab_size=config.type_vocab_size,
-                            token_type_embedding_name="token_type_embeddings",
-                            use_position_embeddings=true,
-                            position_embedding_name="position_embeddings",
-                            initializer_range=config.initializer_range,
-                            max_position_embeddings=config.max_position_embeddings,
-                            dropout_prob=config.hidden_dropout_prob)
+            let embedding_output = 
+                BertModel.embedding_postprocessor(
+                    input_tensor=embedding_output,
+                    use_token_type=true,
+                    token_type_ids=token_type_ids,
+                    token_type_vocab_size=config.type_vocab_size,
+                    token_type_embedding_name="token_type_embeddings",
+                    use_position_embeddings=true,
+                    position_embedding_name="position_embeddings",
+                    initializer_range=config.initializer_range,
+                    max_position_embeddings=config.max_position_embeddings,
+                    dropout_prob=config.hidden_dropout_prob)
 
-                    (embedding_output, embedding_table)) //)
+            (embedding_output, embedding_table)
 
-            //This converts a 2D mask of shape [batch_size, seq_length] to a 3D
-            // mask of shape [batch_size, seq_length, seq_length] which is used
-            // for the attention scores.
-            let all_encoder_layers =
-                //Tensorflow.Binding.tf_with(tf.name_scope("encoder"), fun _ -> 
-                Tensorflow.Binding.tf_with(tf.variable_scope("encoder"), fun _ ->
-                    let attention_mask = BertModel.create_attention_mask_from_input_mask(input_ids, input_mask)
-                    // Run the stacked transformer.
-                    // `sequence_output` shape = [batch_size, seq_length, hidden_size].
-                    BertModel.transformer_model(input_tensor=embedding_output,
-                                                attention_mask=attention_mask,
-                                                hidden_size=config.hidden_size,
-                                                num_hidden_layers=config.num_hidden_layers,
-                                                num_attention_heads=config.num_attention_heads,
-                                                intermediate_size=config.intermediate_size,
-                                                intermediate_act_fn=config.hidden_act,
-                                                hidden_dropout_prob=config.hidden_dropout_prob,
-                                                attention_probs_dropout_prob=config.attention_probs_dropout_prob,
-                                                initializer_range=config.initializer_range,
-                                                do_return_all_layers=true))//)
+        //This converts a 2D mask of shape [batch_size, seq_length] to a 3D
+        // mask of shape [batch_size, seq_length, seq_length] which is used
+        // for the attention scores.
+        let all_encoder_layers =
+            use _encoder = vs.variable_scope("encoder")
+            let attention_mask = BertModel.create_attention_mask_from_input_mask(input_ids, input_mask)
+            // Run the stacked transformer.
+            // `sequence_output` shape = [batch_size, seq_length, hidden_size].
+            BertModel.transformer_model(input_tensor=embedding_output,
+                attention_mask=attention_mask,
+                hidden_size=config.hidden_size,
+                num_hidden_layers=config.num_hidden_layers,
+                num_attention_heads=config.num_attention_heads,
+                intermediate_size=config.intermediate_size,
+                intermediate_act_fn=config.hidden_act,
+                hidden_dropout_prob=config.hidden_dropout_prob,
+                attention_probs_dropout_prob=config.attention_probs_dropout_prob,
+                initializer_range=config.initializer_range,
+                do_return_all_layers=true)
 
-            let sequence_output = all_encoder_layers |> Seq.last
-            // The "pooler" converts the encoded sequence tensor of shape
-            // [batch_size, seq_length, hidden_size] to a tensor of shape
-            // [batch_size, hidden_size]. This is necessary for segment-level
-            // (or segment-pair-level) classification tasks where we need a fixed
-            // dimensional representation of the segment.
-            // We "pool" the model by simply taking the hidden state corresponding
-            // to the first token. We assume that this has been pre-trained
-            let pooled_output = 
-                //Tensorflow.Binding.tf_with(tf.name_scope("pooler"), fun _ -> 
-                Tensorflow.Binding.tf_with(tf.variable_scope("pooler"), fun _ -> 
-                    let first_token_tensor = tf.squeeze(sequence_output.[Slice.All, Slice(Nullable(0),Nullable(1)), Slice.All], axis=[|1|])
-                    Layers.dense(first_token_tensor,
-                                    config.hidden_size,
-                                    activation=tanh(),
-                                    kernel_initializer=Utils.create_initializer(config.initializer_range)))//)
-            (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output))//)
+        let sequence_output = all_encoder_layers |> Seq.last
+        // The "pooler" converts the encoded sequence tensor of shape
+        // [batch_size, seq_length, hidden_size] to a tensor of shape
+        // [batch_size, hidden_size]. This is necessary for segment-level
+        // (or segment-pair-level) classification tasks where we need a fixed
+        // dimensional representation of the segment.
+        // We "pool" the model by simply taking the hidden state corresponding
+        // to the first token. We assume that this has been pre-trained
+        let pooled_output = 
+            use _pooler = vs.variable_scope("pooler")
+            let first_token_tensor = tf.squeeze(sequence_output.[Slice.All, Slice(Nullable(0),Nullable(1)), Slice.All], axis=[|1|])
+            Layers.dense(first_token_tensor,
+                config.hidden_size,
+                activation=tanh(),
+                kernel_initializer=Utils.create_initializer(config.initializer_range))
+        (pooled_output, sequence_output, all_encoder_layers, embedding_table, embedding_output)
 
-    
     member _.PooledOutput = pooled_output
 
     /// <summary>Gets final hidden layer of encoder</summary>
@@ -365,16 +356,16 @@ type BertModel(config: BertConfig,
     ///    hidden layer of the Transformer.</returns>
     /// <exception cdef="Tensorflow.ValueError">A Tensor shape or paramter is invalid</exception>
     static member transformer_model(input_tensor: Tensor,
-                    ?attention_mask,
-                    ?hidden_size: int,
-                    ?num_hidden_layers: int,
-                    ?num_attention_heads: int,
-                    ?intermediate_size: int,
-                    ?intermediate_act_fn: Operations.Activation.IActivation,
-                    ?hidden_dropout_prob: float32,
-                    ?attention_probs_dropout_prob: float32,
-                    ?initializer_range: float32,
-                    ?do_return_all_layers: bool): Tensor[] = 
+            ?attention_mask,
+            ?hidden_size: int,
+            ?num_hidden_layers: int,
+            ?num_attention_heads: int,
+            ?intermediate_size: int,
+            ?intermediate_act_fn: Operations.Activation.IActivation,
+            ?hidden_dropout_prob: float32,
+            ?attention_probs_dropout_prob: float32,
+            ?initializer_range: float32,
+            ?do_return_all_layers: bool): Tensor[] = 
 
         let hidden_size = defaultArg hidden_size 768
         let num_hidden_layers = defaultArg num_hidden_layers 12
@@ -408,63 +399,58 @@ type BertModel(config: BertConfig,
 
         let makeLayer(layer_idx: int) = 
             let name = sprintf "layer_%d" layer_idx
-            //Tensorflow.Binding.tf_with(tf.name_scope(name), fun _ -> 
-            Tensorflow.Binding.tf_with(tf.variable_scope(name), fun _ -> 
-                    let layer_input = prev_output
+            use _layer = vs.variable_scope(name)
+            let layer_input = prev_output
+            let attention_output = 
+                use _attention = vs.variable_scope("attention")
+                // TODO/WARN The python code does not seem to be able to return
+                // more than one attention head here so either I'm wrong about that
+                // or a fair amount of the original code here is moot
+                let attention_output = 
+                    use _self = vs.variable_scope("self")
+                    BertModel.attention_layer(from_tensor=layer_input,
+                        to_tensor=layer_input,
+                        ?attention_mask=attention_mask,
+                        num_attention_heads=num_attention_heads,
+                        size_per_head=attention_head_size,
+                        attention_probs_dropout_prob=attention_probs_dropout_prob,
+                        initializer_range=initializer_range,
+                        do_return_2d_tensor=true,
+                        batch_size=batch_size,
+                        from_seq_length=seq_length,
+                        to_seq_length=seq_length)
+                    // Run a linear projection of `hidden_size` then add a residual
+                // with `layer_input`. 
+                let attention_output = 
+                    use _output = vs.variable_scope("output")
                     let attention_output = 
-                        //Tensorflow.Binding.tf_with(tf.name_scope("attention"), fun _ ->
-                            Tensorflow.Binding.tf_with(tf.variable_scope("attention"), fun _ ->
-                                // TODO/WARN The python code does not seem to be able to return
-                                // more than one attention head here so either I'm wrong about that
-                                // or a fair amount of the original code here is moot
-                                let attention_output = 
-                                    //Tensorflow.Binding.tf_with(tf.name_scope("self"), fun _ -> 
-                                        Tensorflow.Binding.tf_with(tf.variable_scope("self"), fun _ ->
-                                            BertModel.attention_layer(from_tensor=layer_input,
-                                                                        to_tensor=layer_input,
-                                                                        ?attention_mask=attention_mask,
-                                                                        num_attention_heads=num_attention_heads,
-                                                                        size_per_head=attention_head_size,
-                                                                        attention_probs_dropout_prob=attention_probs_dropout_prob,
-                                                                        initializer_range=initializer_range,
-                                                                        do_return_2d_tensor=true,
-                                                                        batch_size=batch_size,
-                                                                        from_seq_length=seq_length,
-                                                                        to_seq_length=seq_length))//)
-                                // Run a linear projection of `hidden_size` then add a residual
-                                // with `layer_input`. 
-                                let attention_output = 
-                                    //Tensorflow.Binding.tf_with(tf.name_scope("output"), fun _ -> 
-                                        Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ ->
-                                            let attention_output = Layers.dense(attention_output, 
-                                                                                    hidden_size,
-                                                                                    kernel_initializer=Utils.create_initializer(initializer_range))
-                                            let attention_output = Utils.dropout(attention_output, hidden_dropout_prob)
-                                            let attention_output = Utils.layer_norm(attention_output + layer_input)
-                                            attention_output)//)
-                                attention_output)//)
+                        Layers.dense(attention_output, 
+                            hidden_size,
+                            kernel_initializer=Utils.create_initializer(initializer_range))
+                    let attention_output = Utils.dropout(attention_output, hidden_dropout_prob)
+                    let attention_output = Utils.layer_norm(attention_output + layer_input)
+                    attention_output
+                attention_output
 
-                    let intermediate_output = 
-                        //Tensorflow.Binding.tf_with(tf.name_scope("intermediate"), fun _ ->
-                            Tensorflow.Binding.tf_with(tf.variable_scope("intermediate"), fun _ ->
-                                Layers.dense(attention_output, 
-                                                intermediate_size,
-                                                activation=intermediate_act_fn,
-                                                kernel_initializer=Utils.create_initializer(initializer_range)))//)
+            let intermediate_output = 
+                use _intermediate = vs.variable_scope("intermediate")
+                Layers.dense(attention_output, 
+                    intermediate_size,
+                    activation=intermediate_act_fn,
+                    kernel_initializer=Utils.create_initializer(initializer_range))
 
-                    let layer_output = 
-                        // Down-project back to `hidden_size` then add the residual.
-                        //Tensorflow.Binding.tf_with(tf.name_scope("output"), fun _ -> 
-                            Tensorflow.Binding.tf_with(tf.variable_scope("output"), fun _ -> 
-                                let layer_output = Layers.dense(intermediate_output, 
-                                                                    hidden_size,
-                                                                    kernel_initializer=Utils.create_initializer(initializer_range))
-                                let layer_output = Utils.dropout(layer_output, hidden_dropout_prob)
-                                let layer_output = Utils.layer_norm(layer_output + attention_output)
-                                layer_output
-                                )//)
-                    prev_output <- layer_output
-                    layer_output)//)
+            let layer_output = 
+                // Down-project back to `hidden_size` then add the residual.
+                use output = vs.variable_scope("output")
+                let layer_output = 
+                    Layers.dense(intermediate_output, 
+                        hidden_size,
+                        kernel_initializer=Utils.create_initializer(initializer_range))
+                let layer_output = Utils.dropout(layer_output, hidden_dropout_prob)
+                let layer_output = Utils.layer_norm(layer_output + attention_output)
+                layer_output
+            prev_output <- layer_output
+            layer_output
 
         let all_layer_outputs = [| for layer_idx in 0..num_hidden_layers - 1 -> makeLayer(layer_idx) |]
 
@@ -504,11 +490,11 @@ type BertModel(config: BertConfig,
     /// embeddings. If False, use `tf.gather()`.</param>
     /// <returns> float Tensor of shape [batch_size, seq_length, embedding_size]. </returns>
     static member embedding_lookup(input_ids: Tensor, 
-                    vocab_size: int,
-                    ?embedding_size: int,
-                    ?initializer_range: float32,
-                    ?word_embedding_name: string,
-                    ?use_one_hot_embeddings: bool) = 
+            vocab_size: int,
+            ?embedding_size: int,
+            ?initializer_range: float32,
+            ?word_embedding_name: string,
+            ?use_one_hot_embeddings: bool) = 
 
         let embedding_size = defaultArg embedding_size 128
         let initializer_range = defaultArg initializer_range 0.02f
@@ -527,8 +513,8 @@ type BertModel(config: BertConfig,
 
         let embedding_table = 
             tf.get_variable(name=word_embedding_name, 
-                            shape=TensorShape(vocab_size, embedding_size),
-                            initializer=Utils.create_initializer(initializer_range))._AsTensor()
+                shape=TensorShape(vocab_size, embedding_size),
+                initializer=Utils.create_initializer(initializer_range))._AsTensor()
 
         let flat_input_ids = tf.reshape(input_ids, [|-1|])
 
@@ -567,18 +553,17 @@ type BertModel(config: BertConfig,
     /// <returns>float tensor with same shape as `input_tensor`</returns>
     /// <exception cdef="Tensorflow.ValueError">One of the tensor shapes or input values is invalid.</exception>
     static member embedding_postprocessor(input_tensor: Tensor,
-                    ?use_token_type: bool,
-                    ?token_type_ids: Tensor,
-                    ?token_type_vocab_size: int,
-                    ?token_type_embedding_name: string,
-                    ?use_position_embeddings: bool,
-                    ?position_embedding_name: string,
-                    ?initializer_range: float32,
-                    ?max_position_embeddings: int,
-                    ?dropout_prob: float32) = 
-            
+            ?use_token_type: bool,
+            ?token_type_ids: Tensor,
+            ?token_type_vocab_size: int,
+            ?token_type_embedding_name: string,
+            ?use_position_embeddings: bool,
+            ?position_embedding_name: string,
+            ?initializer_range: float32,
+            ?max_position_embeddings: int,
+            ?dropout_prob: float32) = 
+                
         let use_token_type = defaultArg use_token_type false
-        //let token_type_ids = defaultArg token_type_ids None
         let token_type_vocab_size = defaultArg token_type_vocab_size 16
         let token_type_embedding_name = defaultArg token_type_embedding_name "token_type_embeddings"
         let use_position_embeddings = defaultArg use_position_embeddings  true
@@ -600,11 +585,10 @@ type BertModel(config: BertConfig,
                 | Some(token_type_ids) ->
                     let token_type_table = 
                         tf.get_variable(token_type_embedding_name,
-                                        dtype = tf.float32,
-                                        shape = TensorShape(token_type_vocab_size, width),
-                                        initializer = Utils.create_initializer(initializer_range))._AsTensor()
-                            
-                        
+                            dtype = tf.float32,
+                            shape = TensorShape(token_type_vocab_size, width),
+                            initializer = Utils.create_initializer(initializer_range))._AsTensor()
+ 
                     // This vocab will be small so we always do one-hot here, since it is always
                     // faster for a small vocabulary.
                     let flat_token_type_ids = tf.reshape(token_type_ids, [|-1|])
@@ -618,14 +602,15 @@ type BertModel(config: BertConfig,
         let output = 
             if use_position_embeddings then
                 // TODO add an assert_less_equal
+                // TODO ControlFlowDependencies not implemented
                 //let assert_op = tf.assert_less_equal(seq_length, max_position_embeddings)
-                let assert_op = tf.assert_equal(seq_length, max_position_embeddings)
-                use _cd = tf.control_dependencies([|assert_op|])
+                //let assert_op = tf.assert_equal(seq_length, max_position_embeddings)
+                //use _cd = tf.control_dependencies([|assert_op|])
                 let full_position_embeddings = 
                     tf.get_variable(name = position_embedding_name,
-                                    shape = TensorShape(max_position_embeddings, width),
-                                    initializer = Utils.create_initializer(initializer_range)
-                                    )._AsTensor()
+                        shape = TensorShape(max_position_embeddings, width),
+                        initializer = Utils.create_initializer(initializer_range)
+                        )._AsTensor()
                 // Since the position embedding table is a learned variable, we create it
                 // using a (long) sequence length `max_position_embeddings`. The actual
                 // sequence length might be shorter than this, for faster training of
@@ -635,7 +620,7 @@ type BertModel(config: BertConfig,
                 // for position [0, 1, 2, ..., max_position_embeddings-1], and the current
                 // sequence has positions [0, 1, 2, ... seq_length-1], so we can just
                 // perform a slice.
-                let position_embeddings = tf.slice(full_position_embeddings, [|0;0|],[|seq_length;-1|])
+                let position_embeddings = tf.slice(full_position_embeddings, [|0;0|], [|seq_length;-1|])
 
                 let num_dims = output.TensorShape.as_list().Length
 
@@ -643,10 +628,7 @@ type BertModel(config: BertConfig,
                 // we broadcast among the first dimensions, which is typically just
                 // the batch size.
                 let position_broadcast_shape = 
-                    [| for _i in 0..num_dims - 3 do 
-                           yield 1
-                       yield seq_length
-                       yield width |]
+                    [| for _i in 0..num_dims - 3 do yield 1; yield seq_length; yield width |]
                 let position_embeddings = tf.reshape(position_embeddings, position_broadcast_shape)
                 output + position_embeddings
             else output
@@ -699,19 +681,19 @@ type BertModel(config: BertConfig,
     ///      num_attention_heads * size_per_head]). </returns>
     /// <exception cdef="Tensorflow.ValueError">Any of the arguments or tensor shapes are invalid.</exception>
     static member attention_layer(from_tensor: Tensor, 
-                    to_tensor: Tensor, 
-                    ?attention_mask: Tensor,
-                    ?num_attention_heads: int,
-                    ?size_per_head: int,
-                    ?query_act: Operations.Activation.IActivation,
-                    ?key_act: Operations.Activation.IActivation,
-                    ?value_act: Operations.Activation.IActivation,
-                    ?attention_probs_dropout_prob: float32,
-                    ?initializer_range: float32,
-                    ?do_return_2d_tensor: bool,
-                    ?batch_size: int,
-                    ?from_seq_length: int,
-                    ?to_seq_length: int) = 
+            to_tensor: Tensor, 
+            ?attention_mask: Tensor,
+            ?num_attention_heads: int,
+            ?size_per_head: int,
+            ?query_act: Operations.Activation.IActivation,
+            ?key_act: Operations.Activation.IActivation,
+            ?value_act: Operations.Activation.IActivation,
+            ?attention_probs_dropout_prob: float32,
+            ?initializer_range: float32,
+            ?do_return_2d_tensor: bool,
+            ?batch_size: int,
+            ?from_seq_length: int,
+            ?to_seq_length: int) = 
             
         let num_attention_heads = defaultArg num_attention_heads 1
         let size_per_head = defaultArg size_per_head 512
@@ -736,8 +718,8 @@ type BertModel(config: BertConfig,
                 | Some x, Some y, Some z -> (x,y,z)
                 | _ -> 
                     raise (ValueError("When passing in a rank 2 tensors to attention_layer, the values " +
-                                        "for `batch_size`, `from_seq_length`, and `to_seq_length` " +
-                                        "must all be specified."))
+                                       "for `batch_size`, `from_seq_length`, and `to_seq_length` " +
+                                       "must all be specified."))
             | n -> failwithf "from_shape is expected to be 3 or 2 but is %i" n
 
         // Scalar dimensions referenced here:
@@ -830,7 +812,7 @@ type BertModel(config: BertConfig,
         // `value_layer` = [B, T, N, H]
         let value_layer = 
             tf.reshape(value_layer, 
-                        [|batch_size; to_seq_length; num_attention_heads; size_per_head|])
+                [|batch_size; to_seq_length; num_attention_heads; size_per_head|])
 
         // `value_layer` = [B, N, T, H]
         let value_layer = tf.transpose(value_layer, [|0; 2; 1; 3|])
@@ -845,11 +827,11 @@ type BertModel(config: BertConfig,
             if do_return_2d_tensor then
                 // `context_layer` = [B*F, N*H]
                 tf.reshape(context_layer,
-                            [|batch_size * from_seq_length; num_attention_heads * size_per_head|])
+                    [|batch_size * from_seq_length; num_attention_heads * size_per_head|])
             else
                 // `context_layer` = [B, F, N*H]
                 tf.reshape(context_layer,
-                            [|batch_size; from_seq_length; num_attention_heads * size_per_head|])
+                    [|batch_size; from_seq_length; num_attention_heads * size_per_head|])
 
         context_layer
 
@@ -860,7 +842,6 @@ type BertModel(config: BertConfig,
     /// <exception cdef="Tensorflow.ValueError">If the expected shape doesn't match the actual shape.</exception>
     static member assert_rank(tensor: Tensor, expected_rank: int[], ?name: string) =
         let name = defaultArg name tensor.name
-        let expected_rank_dict = set expected_rank 
         let actual_rank = tensor.TensorShape.ndim
         if not(expected_rank.Contains(actual_rank)) then
             let scope_name = tf.get_variable_scope().name
@@ -887,10 +868,7 @@ type BertModel(config: BertConfig,
     /// as tf.Tensor scalars.
     /// </returns>
     static member get_shape_list(tensor: Tensor, ?expected_rank: int, ?name: string): int[] =
-        BertModel.get_shape_list(tensor, expected_rank |> Option.toArray, ?name = name )
-
-//        static member get_shape_list(tensor: Tensor) =
-//            BertModel.get_shape_list(tensor,[||])
+        BertModel.get_shape_list(tensor, expected_rank |> Option.toArray, ?name = name)
 
     /// <summary>Returns a list of the shape of tensor, preferring static dimensions.</summary>
     /// <param name="tensor">A tf.Tensor object to find the shape of.</param>
@@ -906,9 +884,7 @@ type BertModel(config: BertConfig,
     static member get_shape_list(tensor: Tensor, expected_rank: int[], ?name: string): int[] =
         let name = defaultArg name tensor.name
         //expected_rank |> Option.iter (fun expected_rank -> BertModel.assert_rank(tensor, expected_rank,name))
-        if expected_rank.Length > 0 then 
-            BertModel.assert_rank(tensor, expected_rank,name)
-
+        if expected_rank.Length > 0 then BertModel.assert_rank(tensor, expected_rank,name)
         let shape = tensor.TensorShape.as_list()
         if shape |> Array.exists (fun x -> x < 0) then
             //let dyn_shape = tf.shape(tensor)

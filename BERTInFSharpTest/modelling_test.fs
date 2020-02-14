@@ -5,22 +5,22 @@ open Microsoft.VisualStudio.TestTools.UnitTesting
 open Tensorflow
 
 type BertModelTester(?batch_size : int,
-                     ?seq_length : int,
-                     ?is_training : bool,
-                     ?use_input_mask : bool,
-                     ?use_token_type_ids : bool,
-                     ?vocab_size : int,
-                     ?hidden_size : int,
-                     ?num_hidden_layers : int,
-                     ?num_attention_heads : int,
-                     ?intermediate_size : int,
-                     ?hidden_act : Operations.Activation.IActivation, 
-                     ?hidden_dropout_prob : float32,
-                     ?attention_probs_dropout_prob : float32,
-                     ?max_position_embeddings : int,
-                     ?type_vocab_size : int,
-                     ?initializer_range : float32,
-                     ?scope : string) = 
+         ?seq_length : int,
+         ?is_training : bool,
+         ?use_input_mask : bool,
+         ?use_token_type_ids : bool,
+         ?vocab_size : int,
+         ?hidden_size : int,
+         ?num_hidden_layers : int,
+         ?num_attention_heads : int,
+         ?intermediate_size : int,
+         ?hidden_act : Operations.Activation.IActivation, 
+         ?hidden_dropout_prob : float32,
+         ?attention_probs_dropout_prob : float32,
+         ?max_position_embeddings : int,
+         ?type_vocab_size : int,
+         ?initializer_range : float32,
+         ?scope : string) = 
 
     let batch_size = defaultArg batch_size 13
     let seq_length = defaultArg seq_length 7
@@ -157,8 +157,6 @@ type BertModelTest()  =
 
         unreachable_ops
 
-        
-
     /// Checks that the tensors in the graph are reachable from outputs.
     let assert_all_tensors_reachable(sess : Session, outputs : ITensorOrOperation[][]) = 
         let graph = sess.graph
@@ -191,18 +189,3 @@ type BertModelTest()  =
     member this.test_default() = 
         run_tester(BertModelTester())
 
-// NOTE We don't have the same flexibility, nor should we.
-//  @classmethod
-//  def flatten_recursive(cls, item):
-//    """Flattens (potentially nested) a tuple/dictionary/list to a list."""
-//    output = []
-//    if isinstance(item, list):
-//      output.extend(item)
-//    elif isinstance(item, tuple):
-//      output.extend(list(item))
-//    elif isinstance(item, dict):
-//      for (_, v) in six.iteritems(item):
-//        output.append(v)
-//    else:
-//      return [item]
-//

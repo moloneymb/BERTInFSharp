@@ -11,7 +11,7 @@ open Tensorflow
 
 [<Test>]
 let ``test pretrained BERT run``() =
-    // TODO generalize location
+    Utils.init.Force()
     Common.setup()
     let tf = Tensorflow.Binding.tf
     tf.reset_default_graph()
@@ -57,6 +57,7 @@ let ``test pretrained BERT run``() =
 
 [<Test>]
 let ``test pretrained BERT train``() =
+    Utils.init.Force()
     Common.setup()
     let tf = Tensorflow.Binding.tf
     tf.reset_default_graph()
@@ -119,23 +120,22 @@ let ``test pretrained BERT train``() =
                                       initializer=tf.zeros_initializer)
 
     let (loss, predicted_labels, log_probs) =
-        Tensorflow.Binding.tf_with(tf.variable_scope("loss"), fun _ -> 
-            // Dropout helps prevent overfitting
-            let output_layer = tf.nn.dropout(output_layer, keep_prob=tf.constant(0.9f))
-            let logits = tf.matmul(output_layer, output_weights._AsTensor())
-            let logits = tf.nn.bias_add(logits, output_bias)
-            let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))
-            // Convert Labels into one-hot encoding
-            let one_hot_labels = tf.one_hot(labels, depth=NUM_LABELS, dtype=tf.float32)
-            let predicted_labels = tf.squeeze(tf.argmax(log_probs, axis = -1, output_type = tf.int32))
-            /// If we're predicting, we want predicted labels and the probabiltiies.
-            //if is_predicting:
-            //  return (predicted_labels, log_probs)
-            // If we're train/eval, compute loss between predicted and actual label
-            let per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis= Nullable(-1))
-            let loss = tf.reduce_mean(per_example_loss)
-            (loss, predicted_labels, log_probs)
-            )
+        use _loss = vs.variable_scope("loss")
+        // Dropout helps prevent overfitting
+        let output_layer = tf.nn.dropout(output_layer, keep_prob=tf.constant(0.9f))
+        let logits = tf.matmul(output_layer, output_weights._AsTensor())
+        let logits = tf.nn.bias_add(logits, output_bias)
+        let log_probs = tf.log(tf.nn.softmax(logits, axis = -1))
+        // Convert Labels into one-hot encoding
+        let one_hot_labels = tf.one_hot(labels, depth=NUM_LABELS, dtype=tf.float32)
+        let predicted_labels = tf.squeeze(tf.argmax(log_probs, axis = -1, output_type = tf.int32))
+        /// If we're predicting, we want predicted labels and the probabiltiies.
+        //if is_predicting:
+        //  return (predicted_labels, log_probs)
+        // If we're train/eval, compute loss between predicted and actual label
+        let per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis= Nullable(-1))
+        let loss = tf.reduce_mean(per_example_loss)
+        (loss, predicted_labels, log_probs)
 
     let num_train_steps = int(float32 train.Length / float32 BATCH_SIZE * NUM_TRAIN_EPOCHS)
     let num_warmup_steps = int(float32 num_train_steps * WARMUP_PROPORTION)
