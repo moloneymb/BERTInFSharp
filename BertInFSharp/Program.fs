@@ -9,7 +9,7 @@ type BertModelTester() =
         let total_dims = shape |> Array.fold (fun x y -> x*y) 1
         let data = [|for i in 0 .. total_dims - 1 -> rng.Next(vocab_size)|]
         match name with
-        | Some(name) -> tf.constant(data, dtype=tf.int32,shape=shape,name=name)
+        | Some name -> tf.constant(data, dtype=tf.int32,shape=shape,name=name)
         | _ -> tf.constant(data, dtype=tf.int32,shape=shape)
 
 (*

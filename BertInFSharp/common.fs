@@ -56,8 +56,8 @@ type System.IO.Compression.ZipArchive with
   member this.ExtractContents(folder : string) = 
       for entry in this.Entries do
         let t = Path.Combine(folder, entry.FullName)
-        if not(entry.FullName.EndsWith("/")) then
-          if not(Directory.Exists(t)) then
+        if not (entry.FullName.EndsWith("/")) then
+          if not (Directory.Exists(t)) then
             Directory.CreateDirectory(Path.GetDirectoryName(t)) |> ignore
           use f = File.OpenWrite(t)
           use g = entry.Open()
@@ -77,7 +77,7 @@ let downloadPackages(packages : (string*string)[]) =
       za.ExtractContents(targetDir)
 
 let fetchAndExtract(url : string, file : string, dir : string) =
-    if not(File.Exists(file)) then
+    if not (File.Exists(file)) then
         use wc = new Net.WebClient()
         wc.DownloadFile(url,file) 
     use fs = File.OpenRead(file)
@@ -113,16 +113,16 @@ let setup() =
 
         for file in redistFiles do
             let tgtFile = Path.Combine(tgtDir,Path.GetFileName(file))
-            if not(File.Exists(tgtFile)) then
+            if not (File.Exists(tgtFile)) then
                 File.Copy(Path.Combine(srcDir,file),tgtFile)
 
     Directory.CreateDirectory(chkpt) |> ignore
     let chkptFile = Path.Combine(chkpt,"uncased_L-12_H-768_A-12.zip")
-    if not(File.Exists(chkptFile)) then
+    if not (File.Exists(chkptFile)) then
         fetchAndExtract(chkptUrl,chkptFile,chkpt)
     Directory.CreateDirectory(data) |> ignore
     let dataFile = Path.Combine(data,"aclImdb_v1.tar.gz")
-    if not(File.Exists(dataFile)) then
+    if not (File.Exists(dataFile)) then
         fetchAndExtract(dataUrl,dataFile,data)
 
 let vocab_file = Path.Combine(chkpt,"uncased_L-12_H-768_A-12", "vocab.txt")

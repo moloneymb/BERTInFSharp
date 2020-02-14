@@ -143,7 +143,7 @@ type BasicTokenizer(?do_lower_case: bool) =
     /// Strips accents from a piece of text.
     let run_strip_accents(text: string) = 
         text.Normalize(Text.NormalizationForm.FormD) // "NFD"
-        |> String.filter (fun c -> not(Char.GetUnicodeCategory(c) = Globalization.UnicodeCategory.NonSpacingMark)) // "Mn"
+        |> String.filter (fun c -> not (Char.GetUnicodeCategory(c) = Globalization.UnicodeCategory.NonSpacingMark)) // "Mn"
 
     /// Splits punctuation on a piece of text.
     let run_split_on_punc(text: string) = 
@@ -234,8 +234,8 @@ type WordpieceTokenizer(vocab: Vocab,
                 if token.Length > max_input_chars_per_word then yield unk_token
                 else 
                     let rec getSubtoken(token: string) =
-                        if token = "##" 
-                        then Some([||]) 
+                        if token = "##" then 
+                            Some[||]
                         else
                             match findLongestMatch(token, prefixTree) with
                             | 0 -> if token.Length = 0 then Some([||]) else None

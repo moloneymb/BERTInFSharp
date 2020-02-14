@@ -50,34 +50,39 @@ type BertModelTester(?batch_size : int,
         | None -> tf.constant(values, dtype=tf.int32, shape=shape)
         | Some(name) -> tf.constant(values, dtype=tf.int32, shape=shape, name=name)
 
-    member this.create_model() = 
+    member _.create_model() = 
         let input_ids = BertModelTester.ids_tensor([|batch_size; seq_length|], vocab_size)
         let input_mask = 
-            if use_input_mask 
-            then Some(BertModelTester.ids_tensor([|batch_size; seq_length|], 2))
+            if use_input_mask then 
+                Some(BertModelTester.ids_tensor([|batch_size; seq_length|], 2))
             else None
-        let token_type_ids = 
-            if use_token_type_ids 
-            then Some(BertModelTester.ids_tensor([|batch_size; seq_length|], type_vocab_size))
-            else None
-        let config = { vocab_size = Some(vocab_size)
-                       hidden_size = hidden_size
-                       num_hidden_layers = num_hidden_layers
-                       num_attention_heads = num_attention_heads
-                       intermediate_size = intermediate_size
-                       hidden_act = hidden_act
-                       hidden_dropout_prob = hidden_dropout_prob
-                       attention_probs_dropout_prob = attention_probs_dropout_prob
-                       max_position_embeddings = max_position_embeddings
-                       type_vocab_size = type_vocab_size
-                       initializer_range = initializer_range } : Modeling.BertConfig
 
-        let model = Modeling.BertModel(config = config,
-                                       is_training = is_training,
-                                       input_ids = input_ids,
-                                       ?input_mask = input_mask,
-                                       ?token_type_ids = token_type_ids,
-                                       ?scope = scope)
+        let token_type_ids = 
+            if use_token_type_ids then 
+                Some(BertModelTester.ids_tensor([|batch_size; seq_length|], type_vocab_size))
+            else None
+
+        let config = 
+            { vocab_size = Some(vocab_size)
+              hidden_size = hidden_size
+              num_hidden_layers = num_hidden_layers
+              num_attention_heads = num_attention_heads
+              intermediate_size = intermediate_size
+              hidden_act = hidden_act
+              hidden_dropout_prob = hidden_dropout_prob
+              attention_probs_dropout_prob = attention_probs_dropout_prob
+              max_position_embeddings = max_position_embeddings
+              type_vocab_size = type_vocab_size
+              initializer_range = initializer_range } : Modeling.BertConfig
+
+        let model = 
+            Modeling.BertModel(config = config,
+                is_training = is_training,
+                input_ids = input_ids,
+                ?input_mask = input_mask,
+                ?token_type_ids = token_type_ids,
+                ?scope = scope)
+
         [| 
             "embedding_output", [|model.EmbeddingOutput|]
             "sequence_output", [|model.SequenceOutput|]
@@ -85,7 +90,7 @@ type BertModelTester(?batch_size : int,
             "all_encoder_layers", model.AllEncoderLayers
         |] |> Map.ofArray
 
-    member this.check_output(result : Map<string,Tensor[]>) =
+    member _.check_output(result : Map<string,Tensor[]>) =
         Assert.AreEqual(result.["embedding_output"].[0].shape,
                        [|batch_size; seq_length; hidden_size|])
         Assert.AreEqual(result.["sequence_output"].[0].shape,
@@ -132,18 +137,16 @@ type BertModelTest()  =
         let stack = System.Collections.Generic.Stack<string>()
         while stack.Count > 0 do
             let name = stack.Pop()
-            if seen_tensors.Contains(name) 
-            then ()
-            else
-                seen_tensors.Add(name) |> ignore
-                for op_name in output_to_op.TryFind(name) |> Option.defaultValue [||] do
-                    for input_name in op_to_all.TryFind(op_name) |> Option.defaultValue [||] do
-                        if not(stack.Contains(input_name)) then
-                            stack.Push(input_name)
+            if not (seen_tensors.Contains name) then
+                seen_tensors.Add name |> ignore
+                for op_name in output_to_op.TryFind name |> Option.defaultValue [||] do
+                    for input_name in op_to_all.TryFind op_name |> Option.defaultValue [||] do
+                        if not (stack.Contains input_name) then
+                            stack.Push input_name
 
-                for assign_name in assign_groups.TryFind(name) |> Option.defaultValue [||] do
-                    if not(stack.Contains(assign_name)) then
-                        stack.Push(assign_name)
+                for assign_name in assign_groups.TryFind name |> Option.defaultValue [||] do
+                    if not (stack.Contains assign_name) then
+                        stack.Push assign_name
 
         let unreachable_ops = 
             [|
@@ -188,7 +191,7 @@ type BertModelTest()  =
 
 
     [<TestMethod>]
-    member this.test_default() = 
+    member _.test_default() = 
         run_tester(BertModelTester())
 
 // NOTE We don't have the same flexibility, nor should we.

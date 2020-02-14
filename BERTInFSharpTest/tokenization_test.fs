@@ -59,7 +59,7 @@ let ``test convert tokens to ids``() =
 [<Test>]
 let ``test is whitespace``() = 
     for c in [|' '; '\t'; '\r'; '\n'; '\u00A0'|] do
-        if not(Tokenization.is_whitespace(c)) then
+        if not (Tokenization.is_whitespace(c)) then
             failwithf "%c is whitespace" c
     for c in [|'A'; '-'|] do
         if Tokenization.is_whitespace(c) then
@@ -67,7 +67,7 @@ let ``test is whitespace``() =
 
 [<Test>]
 let ``test is control``() = 
-    if not(Tokenization.is_control('\u0005')) then
+    if not (Tokenization.is_control('\u0005')) then
         failwith "the given character should be control"
     // TODO how to handle ? '\U0001F4A9'
     for c in [|'A'; ' '; '\t'; '\r'|] do
@@ -77,7 +77,7 @@ let ``test is control``() =
 [<Test>]
 let ``test is punctuation``() = 
     for c in [|'-'; '$'; '`'; '.'|] do  
-        if not(Tokenization.is_punctuation(c)) then
+        if not (Tokenization.is_punctuation(c)) then
             failwith "given character should be punctuation"
     for c in [|'A'; ' '|] do 
         if Tokenization.is_punctuation(c) then

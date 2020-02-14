@@ -11,6 +11,8 @@ module Modeling
 open NumSharp
 open System
 open System.Linq
+open System.IO
+open System.Text.RegularExpressions
 open Tensorflow
 open Tensorflow.Operations.Activation
 open Newtonsoft.Json.Linq
@@ -21,7 +23,7 @@ open Newtonsoft.Json.Linq
 /// </summary>
 /// <param name="x">float Tensor to perform activation.</param>
 /// <returns>  `x` with the GELU activation applied.</returns>
-let gelu(x: Tensor) =
+let gelu (x: Tensor) =
     let cdf = 0.5 * (1.0 + tf.tanh(0.7978845608 * (x + 0.044715 * tf.pow(x, 3))))
     x * cdf
 
@@ -31,39 +33,47 @@ module Activation =
     let Tanh  = Operations.Activation.tanh()
     let Linear = Operations.Activation.linear()
 
-
-
 /// Configuration for `BertModel`.
 type BertConfig = 
     { 
         /// Vocabulary size of `inputs_ids` in `BertModel`.
         vocab_size: int option
+
         /// Size of the encoder layers and the pooler layer.
         hidden_size: int
+
         /// Number of hidden layers in the Transformer encoder.
         num_hidden_layers: int
+
         /// Number of attention heads for each attention layer in
         /// the Transformer encoder.
         num_attention_heads: int
+
         /// The size of the "intermediate" (i.e., feed-forward)
         /// layer in the Transformer encoder.
         intermediate_size: int
+
         /// The non-linear activation function (function or string) in the
         /// encoder and pooler.
         hidden_act: IActivation
+
         /// The dropout probability for all fully connected
         /// layers in the embeddings, encoder, and pooler.
         hidden_dropout_prob: float32
+
         ///  The dropout ratio for the attention
         ///  probabilities.
         attention_probs_dropout_prob: float32
+
         ///  The maximum sequence length that this model might
         ///    ever be used with. Typically set this to something large just in case
         ///    (e.g., 512 or 1024 or 2048).
         max_position_embeddings: int
+
         /// The vocabulary size of the `token_type_ids` passed into
         /// `BertModel`.
         type_vocab_size: int
+
         /// The stdev of the truncated_normal_initializer for
         initializer_range: float32
     }
@@ -173,9 +183,10 @@ type BertModel(config: BertConfig,
     let scope = defaultArg scope "bert"
     let use_one_hot_embeddings = defaultArg use_one_hot_embeddings false
     let config = 
-        if not is_training 
-        then {config with hidden_dropout_prob = 0.0f; attention_probs_dropout_prob = 0.0f}
-        else config
+        if not is_training then
+            {config with hidden_dropout_prob = 0.0f; attention_probs_dropout_prob = 0.0f}
+        else
+            config
 
     let input_shape: int[] = BertModel.get_shape_list(input_ids, expected_rank=2)
     let batch_size = input_shape.[0]
@@ -278,7 +289,7 @@ type BertModel(config: BertConfig,
     /// Compute the union of the current variables and checkpoint variables.
     static member get_assignment_map_from_checkpoint(tvars:RefVariable[], init_checkpoint) =
 
-        let re = System.Text.RegularExpressions.Regex("^(.*):\\d+$")
+        let re = Regex("^(.*):\\d+$")
             
         let name_to_variable = 
             [|
@@ -297,7 +308,7 @@ type BertModel(config: BertConfig,
 
         // NOTE: Expects full path to *.ckpt.meta file, this may not be correct
         let list_variables(path: string) =
-            use f = System.IO.File.OpenRead(path)
+            use f = File.OpenRead(path)
             let metaGraph = Tensorflow.MetaGraphDef.Parser.ParseFrom(f)
             metaGraph.GraphDef.Node 
             |> Seq.choose (fun x -> if x.Op = "VariableV2" then Some(x.Name) else None)
@@ -862,7 +873,7 @@ type BertModel(config: BertConfig,
         let name = defaultArg name tensor.name
         let expected_rank_dict = set expected_rank 
         let actual_rank = tensor.TensorShape.ndim
-        if not(expected_rank.Contains(actual_rank)) then
+        if not (expected_rank.Contains(actual_rank)) then
             let scope_name = tf.get_variable_scope().name
             raise (ValueError(sprintf "For the tensor.`%s` in scope `%s`, the actual rank `%d` (shape = %O) is not equal to the expected rank `%A`"
                 name scope_name actual_rank tensor.TensorShape expected_rank))
